@@ -1,36 +1,39 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# OpenCanvas
 
-## Getting Started
+## What is OpenCanvas?
 
-First, run the development server:
+OpenCanvas is a visual workflow builder that lets you create consistent, repeatable AI workflows using Google's Gemini AI models. Think of it as a canvas where you connect different AI tools together like building blocks to create powerful automated workflows for text generation, image analysis, content creation, and more.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+Instead of manually writing prompts over and over, you design your workflow once and reuse it as many times as you need - ensuring consistent, high-quality results every time.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## The Problem
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Inconsistent AI Outputs
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+When working with AI, getting consistent results is hard. Whether you're creating content, analyzing images, or processing text, the quality and style can vary wildly between attempts. For businesses and creators who need to generate bulk content or run the same analysis repeatedly, this inconsistency is a major headache.
 
-## Learn More
+### No Visual Tool for Gemini
 
-To learn more about Next.js, take a look at the following resources:
+While there are workflow tools for other AI platforms, there's no dedicated solution that brings together all of Google's Gemini AI capabilities (text, vision, code, and multimodal) in one easy-to-use visual interface.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Manual Work is Time-Consuming
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Setting up AI prompts, configuring parameters, and managing context manually takes time and effort. Every time you need to run a similar task, you're starting from scratch.
 
-## Deploy on Vercel
+## What We're Solving
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+OpenCanvas solves these problems by providing:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+**Visual Workflow Design** - Drag and drop AI models and tools to create workflows without writing code
+
+**Consistency & Repeatability** - Design once, run unlimited times with identical settings and quality
+
+**All Gemini Models in One Place** - Access text generation, image analysis, code creation, and multimodal processing in a single platform
+
+**Bulk Processing Made Easy** - Process hundreds of items using the same workflow with just a few clicks
+
+ **Clear Context Management** - Organize your inputs, prompts, and settings visually so AI understands exactly what you need
+
+ **Save Time** - Reuse workflows, share them with your team, and automate repetitive AI tasks
+
+Whether you're a content creator, marketer, developer, or business owner, OpenCanvas makes working with AI simpler, faster, and more reliable.
