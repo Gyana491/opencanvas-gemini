@@ -22,12 +22,12 @@ import '@xyflow/react/dist/style.css'
 import { EditorSidebar } from './editor-sidebar'
 import { NodeLibrary } from './node-library'
 import { NodeProperties } from './node-properties'
-import { GeminiProNode } from './nodes/gemini-pro-node'
-import { GeminiFlashNode } from './nodes/gemini-flash-node'
-import { GeminiVisionNode } from './nodes/gemini-vision-node'
+import { GeminiProNode } from './nodes/models/gemini-pro-node'
+import { GeminiFlashNode } from './nodes/models/gemini-flash-node'
+import { GeminiVisionNode } from './nodes/models/gemini-vision-node'
 import { TextInputNode } from './nodes/text-input-node'
 import { ImageUploadNode } from './nodes/image-upload-node'
-import { ImageGenNode } from './nodes/image-gen-node'
+import { ImageGenNode } from './nodes/models/image-gen-node'
 
 const nodeTypes = {
   geminiPro: GeminiProNode,
