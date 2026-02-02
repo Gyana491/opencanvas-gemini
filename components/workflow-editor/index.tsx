@@ -10,6 +10,7 @@ import {
   useNodesState,
   useEdgesState,
   useReactFlow,
+  type OnConnectStart,
   type Connection,
   type Edge,
   type Node,
@@ -252,7 +253,7 @@ function WorkflowEditorInner() {
     [setEdges]
   )
 
-  const onConnectStart = useCallback((_: any, params: { handleType: string; handleId: string | null }) => {
+  const onConnectStart = useCallback<OnConnectStart>((_, params) => {
     if (params.handleType === 'source') {
       setConnectingSourceHandle(params.handleId)
     }
