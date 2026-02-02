@@ -8,7 +8,7 @@ export default function Home() {
   return (
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-14 items-center px-4 md:px-6">
+        <div className="container flex h-14 max-w-7xl mx-auto items-center px-4 md:px-6">
           <div className="mr-4 hidden md:flex">
             <Link href="/" className="mr-6 flex items-center space-x-2">
               <Workflow className="h-6 w-6" />
@@ -48,8 +48,8 @@ export default function Home() {
         </div>
       </header>
       <main className="flex-1">
-        <section className="space-y-6 pb-8 pt-6 md:pb-12 md:pt-10 lg:py-32">
-          <div className="container flex max-w-[64rem] flex-col items-center gap-4 text-center">
+        <section className="w-full space-y-6 pb-8 pt-6 md:pb-12 md:pt-10 lg:py-32">
+          <div className="container mx-auto flex max-w-6xl flex-col items-center gap-4 px-4 md:px-6 text-center">
             <Link
               href="/twitter"
               className="rounded-2xl bg-muted px-4 py-1.5 text-sm font-medium"
@@ -80,9 +80,9 @@ export default function Home() {
         </section>
         <section
           id="features"
-          className="container space-y-6 bg-slate-50 py-8 dark:bg-transparent md:py-12 lg:py-24"
+          className="w-full space-y-6 bg-slate-50 py-8 dark:bg-transparent md:py-12 lg:py-24"
         >
-          <div className="mx-auto flex max-w-[58rem] flex-col items-center space-y-4 text-center">
+          <div className="container mx-auto flex max-w-6xl flex-col items-center space-y-4 px-4 md:px-6 text-center">
             <h2 className="font-heading text-3xl leading-[1.1] sm:text-3xl md:text-6xl font-bold">
               Features
             </h2>
@@ -90,7 +90,7 @@ export default function Home() {
               Everything you need to build advanced AI workflows.
             </p>
           </div>
-          <div className="mx-auto grid justify-center gap-4 sm:grid-cols-2 md:max-w-[64rem] md:grid-cols-3">
+          <div className="mx-auto grid justify-center gap-4 w-full max-w-5xl px-4 md:px-6 sm:grid-cols-2 md:grid-cols-3">
             <Card>
               <CardHeader>
                 <Layers className="h-10 w-10 mb-4" />
@@ -120,15 +120,15 @@ export default function Home() {
             </Card>
           </div>
         </section>
-        <section className="container py-8 md:py-12 lg:py-24">
-            <div className="mx-auto flex max-w-[58rem] flex-col items-center justify-center gap-4 text-center">
+        <section className="w-full py-8 md:py-12 lg:py-24">
+            <div className="container mx-auto flex max-w-6xl flex-col items-center justify-center gap-4 px-4 md:px-6 text-center">
                 <h2 className="font-heading text-3xl leading-[1.1] sm:text-3xl md:text-6xl font-bold">
                     Powered by Gemini
                 </h2>
                 <p className="max-w-[85%] leading-normal text-muted-foreground sm:text-lg sm:leading-7">
                     Leverage the full power of Google's latest AI models
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mt-8 w-full max-w-[64rem]">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mt-8 w-full max-w-5xl px-4 md:px-6">
                    <Card className="flex flex-col items-center justify-center p-6 bg-slate-50 dark:bg-slate-900 border-none shadow-none">
                        <Zap className="h-8 w-8 mb-2 text-yellow-500"/>
                        <div className="font-bold">Gemini Flash</div>
@@ -153,8 +153,8 @@ export default function Home() {
             </div>
         </section>
       </main>
-      <footer className="py-6 md:px-8 md:py-0 border-t">
-        <div className="container flex flex-col items-center justify-between gap-4 md:h-24 md:flex-row">
+      <footer className="w-full py-6 md:py-0 border-t">
+        <div className="container mx-auto max-w-7xl flex flex-col items-center justify-between gap-4 px-4 md:px-8 md:h-24 md:flex-row">
             <p className="text-center text-sm leading-loose text-muted-foreground md:text-left">
               Built by <a href="#" className="font-medium underline underline-offset-4">OpenCanvas</a>. The source code is available on <a href="#" className="font-medium underline underline-offset-4">GitHub</a>.
             </p>
