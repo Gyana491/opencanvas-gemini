@@ -22,21 +22,28 @@ import '@xyflow/react/dist/style.css'
 import { EditorSidebar } from './editor-sidebar'
 import { NodeLibrary } from './node-library'
 import { NodeProperties } from './node-properties'
-import { GeminiProNode } from './nodes/models/gemini-pro-node'
-import { GeminiFlashNode } from './nodes/models/gemini-flash-node'
-import { GeminiVisionNode } from './nodes/models/gemini-vision-node'
+import { ImagenNode } from './nodes/models/imagen-node'
 import { TextInputNode } from './nodes/text-input-node'
 import { ImageUploadNode } from './nodes/image-upload-node'
-import { ImageGenNode } from './nodes/models/image-gen-node'
+import { NanoBananaNode } from './nodes/models/nano-banana-node'
+import { NanoBananaProNode } from './nodes/models/nano-banana-pro-node'
+import { Veo3Node } from './nodes/models/veo-3-node'
 
 const nodeTypes = {
-  geminiPro: GeminiProNode,
-  geminiFlash: GeminiFlashNode,
-  geminiVision: GeminiVisionNode,
+  imagen: ImagenNode,
   textInput: TextInputNode,
   imageUpload: ImageUploadNode,
-  imageGen: ImageGenNode,
+  nanoBanana: NanoBananaNode,
+  nanoBananaPro: NanoBananaProNode,
+  veo3: Veo3Node,
 }
+
+const NODES_WITH_PROPERTIES = [
+  'imagen',
+  'nanoBanana',
+  'nanoBananaPro',
+  'veo3',
+]
 
 type WorkflowNodeData = {
   label: string
@@ -45,7 +52,7 @@ type WorkflowNodeData = {
 const initialNodes: Node<WorkflowNodeData>[] = []
 const initialEdges: Edge[] = []
 
-type HandleKind = 'text' | 'image'
+type HandleKind = 'text' | 'image' | 'video'
 
 type HandleMeta = {
   id: string
@@ -63,11 +70,13 @@ type NodeHandleMeta = {
 const OUTPUT_HANDLE_IDS = {
   text: 'textOutput',
   image: 'imageOutput',
+  video: 'videoOutput',
 }
 
 const EDGE_COLORS = {
   text: '#38bdf8', // sky-400
   image: '#34d399', // emerald-400
+  video: '#a78bfa', // violet-400
   default: '#94a3b8', // slate-400
 } as const
 
@@ -81,6 +90,9 @@ function getKindFromSourceHandle(sourceHandle?: string | null): HandleKind | nul
   if (sourceHandle === OUTPUT_HANDLE_IDS.image) {
     return 'image'
   }
+  if (sourceHandle === OUTPUT_HANDLE_IDS.video) {
+    return 'video'
+  }
   return null
 }
 
@@ -91,7 +103,7 @@ function getEdgeColorFromSourceHandle(sourceHandle?: string | null): string {
 
 function getNodeHandles(nodeType: string): NodeHandleMeta {
   switch (nodeType) {
-    case 'geminiPro':
+    case 'imagen':
       return {
         inputs: [
           {
@@ -101,67 +113,15 @@ function getNodeHandles(nodeType: string): NodeHandleMeta {
             required: true,
             allowedSourceIds: [OUTPUT_HANDLE_IDS.text],
           },
+        ],
+        outputs: [
           {
-            id: 'image',
+            id: OUTPUT_HANDLE_IDS.image,
             label: 'Image',
             type: 'image',
-            allowedSourceIds: [OUTPUT_HANDLE_IDS.image],
-          },
-        ],
-        outputs: [
-          {
-            id: OUTPUT_HANDLE_IDS.text,
-            label: 'Result',
-            type: 'text',
           },
         ],
       }
-    case 'geminiFlash':
-      return {
-        inputs: [
-          {
-            id: 'prompt',
-            label: 'Prompt',
-            type: 'text',
-            required: true,
-            allowedSourceIds: [OUTPUT_HANDLE_IDS.text],
-          },
-        ],
-        outputs: [
-          {
-            id: OUTPUT_HANDLE_IDS.text,
-            label: 'Result',
-            type: 'text',
-          },
-        ],
-      }
-    case 'geminiVision':
-      return {
-        inputs: [
-          {
-            id: 'prompt',
-            label: 'Prompt',
-            type: 'text',
-            required: true,
-            allowedSourceIds: [OUTPUT_HANDLE_IDS.text],
-          },
-          {
-            id: 'image',
-            label: 'Image',
-            type: 'image',
-            required: true,
-            allowedSourceIds: [OUTPUT_HANDLE_IDS.image],
-          },
-        ],
-        outputs: [
-          {
-            id: OUTPUT_HANDLE_IDS.text,
-            label: 'Result',
-            type: 'text',
-          },
-        ],
-      }
-    case 'imageGen':
       return {
         inputs: [
           {
@@ -200,6 +160,45 @@ function getNodeHandles(nodeType: string): NodeHandleMeta {
           },
         ],
       }
+    case 'nanoBanana':
+    case 'nanoBananaPro':
+      return {
+        inputs: [
+          {
+            id: 'prompt',
+            label: 'Prompt',
+            type: 'text',
+            required: true,
+            allowedSourceIds: [OUTPUT_HANDLE_IDS.text],
+          },
+        ],
+        outputs: [
+          {
+            id: OUTPUT_HANDLE_IDS.image,
+            label: 'Image',
+            type: 'image',
+          },
+        ],
+      }
+    case 'veo3':
+      return {
+        inputs: [
+          {
+            id: 'prompt',
+            label: 'Prompt',
+            type: 'text',
+            required: true,
+            allowedSourceIds: [OUTPUT_HANDLE_IDS.text],
+          },
+        ],
+        outputs: [
+          {
+            id: OUTPUT_HANDLE_IDS.video,
+            label: 'Video',
+            type: 'video',
+          },
+        ],
+      }
     default:
       return {}
   }
@@ -213,6 +212,90 @@ function WorkflowEditorInner() {
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false)
   const [connectingSourceHandle, setConnectingSourceHandle] = useState<string | null>(null)
   const { screenToFlowPosition } = useReactFlow()
+
+  const updateNodeData = useCallback((nodeId: string, data: any) => {
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id === nodeId) {
+          return { ...node, data: { ...node.data, ...data } }
+        }
+        return node
+      })
+    )
+    // Update selected node state to reflect changes
+    setSelectedNode((current: any) =>
+      current?.id === nodeId
+        ? { ...current, data: { ...current.data, ...data } }
+        : current
+    )
+  }, [setNodes, setSelectedNode])
+
+  // Propagate connected node data through edges
+  React.useEffect(() => {
+    setNodes((currentNodes) => {
+      const updatedNodes = currentNodes.map((node) => {
+        const incomingEdges = edges.filter((edge) => edge.target === node.id)
+
+        const connectedData: Record<string, any> = {}
+
+        incomingEdges.forEach((edge) => {
+          const sourceNode = currentNodes.find((n) => n.id === edge.source)
+          if (!sourceNode) return
+
+          const targetHandle = edge.targetHandle
+
+          // Map source data to target connected fields
+          if (targetHandle === 'prompt') {
+            // Text output from source node
+            if (sourceNode.type === 'textInput') {
+              connectedData.connectedPrompt = sourceNode.data.text || ''
+            } else if (sourceNode.data.output) {
+              connectedData.connectedPrompt = sourceNode.data.output
+            }
+          } else if (targetHandle === 'image') {
+            // Image output from source node
+            if (sourceNode.type === 'imageUpload') {
+              connectedData.connectedImage = sourceNode.data.imageUrl || ''
+            } else if (sourceNode.data.imageOutput) {
+              connectedData.connectedImage = sourceNode.data.imageOutput
+            }
+          }
+        })
+
+        // Only update if there are connected data changes
+        if (incomingEdges.length > 0) {
+          const hasChanges = Object.keys(connectedData).some(
+            (key) => node.data[key] !== connectedData[key]
+          )
+
+          if (hasChanges) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                ...connectedData,
+              },
+            }
+          }
+        }
+
+        // Ensure onUpdateNodeData is available on all nodes
+        if (!node.data.onUpdateNodeData) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              onUpdateNodeData: updateNodeData,
+            },
+          }
+        }
+
+        return node
+      })
+
+      return updatedNodes
+    })
+  }, [edges, updateNodeData, setNodes])
 
   const isValidConnection: IsValidConnection<Edge> = useCallback(
     (edgeOrConnection) => {
@@ -287,28 +370,13 @@ function WorkflowEditorInner() {
         type: nodeType,
         position,
         data: {
-          label: nodeType === 'geminiPro' ? 'Gemini 2.0 Flash' :
-                 nodeType === 'geminiFlash' ? 'Gemini 2.5 Flash Lite' :
-                 nodeType === 'geminiVision' ? 'Gemini Vision' :
-                 nodeType === 'imageGen' ? 'Imagen 3' :
-                 nodeType === 'textInput' ? 'Text Input' :
-                 nodeType === 'imageUpload' ? 'Image Upload' : nodeType,
-          ...(nodeType === 'geminiPro' && {
-            temperature: 0.7,
-            maxTokens: 1000,
-            systemPrompt: '',
-            userPrompt: '',
-          }),
-          ...(nodeType === 'geminiFlash' && {
-            temperature: 0.5,
-            maxTokens: 500,
-            prompt: '',
-          }),
-          ...(nodeType === 'geminiVision' && {
-            prompt: '',
-            imageUrl: '',
-          }),
-          ...(nodeType === 'imageGen' && {
+          label: nodeType === 'imagen' ? 'Imagen 4.0' :
+            nodeType === 'nanoBanana' ? 'Nano Banana' :
+              nodeType === 'nanoBananaPro' ? 'Nano Banana Pro' :
+                nodeType === 'veo3' ? 'Veo 3' :
+                  nodeType === 'textInput' ? 'Text Input' :
+                    nodeType === 'imageUpload' ? 'Image Upload' : nodeType,
+          ...(nodeType === 'imagen' && {
             prompt: '',
           }),
           ...(nodeType === 'textInput' && {
@@ -318,18 +386,37 @@ function WorkflowEditorInner() {
             imageUrl: '',
             fileName: '',
           }),
+          ...(nodeType === 'nanoBanana' && {
+            prompt: '',
+            aspectRatio: '1:1',
+          }),
+          ...(nodeType === 'nanoBananaPro' && {
+            prompt: '',
+            imageSize: '1K',
+            useGoogleSearch: false,
+          }),
+          ...(nodeType === 'veo3' && {
+            prompt: '',
+            resolution: '720p',
+            durationSeconds: 4,
+          }),
           ...getNodeHandles(nodeType),
+          onUpdateNodeData: updateNodeData,
         },
       } satisfies Node<WorkflowNodeData>
 
       setNodes((nds) => [...nds, newNode])
     },
-    [screenToFlowPosition, setNodes]
+    [screenToFlowPosition, setNodes, updateNodeData]
   )
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: any) => {
     setSelectedNode(node)
-    setIsRightSidebarOpen(true)
+    if (NODES_WITH_PROPERTIES.includes(node.type)) {
+      setIsRightSidebarOpen(true)
+    } else {
+      setIsRightSidebarOpen(false)
+    }
   }, [])
 
   const onPaneClick = useCallback(() => {
@@ -341,33 +428,18 @@ function WorkflowEditorInner() {
     const newNode = {
       id: `${nodeType}-${Date.now()}`,
       type: nodeType,
-      position: { 
-        x: Math.random() * 400 + 100, 
-        y: Math.random() * 400 + 100 
+      position: {
+        x: Math.random() * 400 + 100,
+        y: Math.random() * 400 + 100
       },
-      data: { 
-        label: nodeType === 'geminiPro' ? 'Gemini 2.0 Flash' :
-               nodeType === 'geminiFlash' ? 'Gemini 2.5 Flash Lite' :
-               nodeType === 'geminiVision' ? 'Gemini Vision' :
-               nodeType === 'imageGen' ? 'Imagen 3' :
-               nodeType === 'textInput' ? 'Text Input' :
-               nodeType === 'imageUpload' ? 'Image Upload' : nodeType,
-        ...(nodeType === 'geminiPro' && {
-          temperature: 0.7,
-          maxTokens: 1000,
-          systemPrompt: '',
-          userPrompt: '',
-        }),
-        ...(nodeType === 'geminiFlash' && {
-          temperature: 0.5,
-          maxTokens: 500,
-          prompt: '',
-        }),
-        ...(nodeType === 'geminiVision' && {
-          prompt: '',
-          imageUrl: '',
-        }),
-        ...(nodeType === 'imageGen' && {
+      data: {
+        label: nodeType === 'imagen' ? 'Imagen 4.0' :
+          nodeType === 'nanoBanana' ? 'Nano Banana' :
+            nodeType === 'nanoBananaPro' ? 'Nano Banana Pro' :
+              nodeType === 'veo3' ? 'Veo 3' :
+                nodeType === 'textInput' ? 'Text Input' :
+                  nodeType === 'imageUpload' ? 'Image Upload' : nodeType,
+        ...(nodeType === 'imagen' && {
           prompt: '',
         }),
         ...(nodeType === 'textInput' && {
@@ -377,33 +449,31 @@ function WorkflowEditorInner() {
           imageUrl: '',
           fileName: '',
         }),
+        ...(nodeType === 'nanoBanana' && {
+          prompt: '',
+          aspectRatio: '1:1',
+        }),
+        ...(nodeType === 'nanoBananaPro' && {
+          prompt: '',
+          imageSize: '1K',
+          useGoogleSearch: false,
+        }),
+        ...(nodeType === 'veo3' && {
+          prompt: '',
+          resolution: '720p',
+          durationSeconds: 4,
+        }),
         ...getNodeHandles(nodeType),
+        onUpdateNodeData: updateNodeData,
       },
     } satisfies Node<WorkflowNodeData>
     setNodes((nds) => [...nds, newNode])
-  }, [setNodes])
-
-  const updateNodeData = useCallback((nodeId: string, data: any) => {
-    setNodes((nds) =>
-      nds.map((node) => {
-        if (node.id === nodeId) {
-          return { ...node, data: { ...node.data, ...data } }
-        }
-        return node
-      })
-    )
-    // Update selected node state to reflect changes
-    setSelectedNode((current: any) => 
-      current?.id === nodeId 
-        ? { ...current, data: { ...current.data, ...data } }
-        : current
-    )
-  }, [setNodes])
+  }, [setNodes, updateNodeData])
 
   return (
     <div className="flex h-screen w-full bg-background">
       {/* Minimal left sidebar with logo, search, layers - always visible */}
-      <EditorSidebar 
+      <EditorSidebar
         onSearchClick={() => setIsLibraryOpen(true)}
         onLayersClick={() => setIsLibraryOpen(!isLibraryOpen)}
         isLibraryOpen={isLibraryOpen}
@@ -437,15 +507,15 @@ function WorkflowEditorInner() {
         </ReactFlow>
 
         {/* Node Library - slides from left, positioned after icon bar */}
-        <NodeLibrary 
-          onAddNode={addNode} 
+        <NodeLibrary
+          onAddNode={addNode}
           onClose={() => setIsLibraryOpen(false)}
           isOpen={isLibraryOpen}
         />
 
         {/* Right sidebar for node properties */}
-        <NodeProperties 
-          node={selectedNode} 
+        <NodeProperties
+          node={selectedNode}
           onUpdateNode={updateNodeData}
           isOpen={isRightSidebarOpen}
           onClose={() => {

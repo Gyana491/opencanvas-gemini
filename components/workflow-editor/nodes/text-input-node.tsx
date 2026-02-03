@@ -4,10 +4,11 @@ import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { Card } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
 import { FileText, MoreVertical } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
-export const TextInputNode = memo(({ data, selected }: any) => {
+export const TextInputNode = memo(({ data, selected, id }: NodeProps) => {
   const outputs = (data?.outputs || []) as Array<{
     id: string
     label: string
@@ -35,10 +36,9 @@ export const TextInputNode = memo(({ data, selected }: any) => {
       : 'text-sky-300'
 
   return (
-    <Card 
-      className={`relative min-w-[280px] bg-card border-2 transition-all ${
-        selected ? 'border-primary shadow-lg' : 'border-border'
-      }`}
+    <Card
+      className={`relative min-w-[280px] bg-card border-2 transition-all ${selected ? 'border-primary shadow-lg' : 'border-border'
+        }`}
     >
       <div className="p-3">
         {/* Header */}
@@ -57,11 +57,13 @@ export const TextInputNode = memo(({ data, selected }: any) => {
         {/* Content */}
         <div className="space-y-2">
           <Textarea
-            defaultValue={(data?.text as string) || ''}
+            value={(data?.text as string) || ''}
             placeholder="Enter your text or prompt here..."
             className="min-h-[100px] text-sm resize-none nodrag"
             onChange={(e) => {
-              data.text = e.target.value
+              if (data?.onUpdateNodeData && typeof data.onUpdateNodeData === 'function') {
+                (data.onUpdateNodeData as (id: string, data: any) => void)(id, { text: e.target.value })
+              }
             }}
           />
         </div>

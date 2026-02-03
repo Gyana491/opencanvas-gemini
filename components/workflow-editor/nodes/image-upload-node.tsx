@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Image as ImageIcon, Upload, MoreVertical, X } from 'lucide-react'
 
-export const ImageUploadNode = memo(({ data, selected }: any) => {
+export const ImageUploadNode = memo(({ data, selected, id }: NodeProps) => {
   const outputs = (data?.outputs || []) as Array<{
     id: string
     label: string
@@ -43,8 +43,12 @@ export const ImageUploadNode = memo(({ data, selected }: any) => {
       reader.onloadend = () => {
         const result = reader.result as string
         setPreview(result)
-        data.imageUrl = result
-        data.fileName = file.name
+        if (data?.onUpdateNodeData && typeof data.onUpdateNodeData === 'function') {
+          (data.onUpdateNodeData as (id: string, data: any) => void)(id, {
+            imageUrl: result,
+            fileName: file.name
+          })
+        }
       }
       reader.readAsDataURL(file)
     }
@@ -52,18 +56,21 @@ export const ImageUploadNode = memo(({ data, selected }: any) => {
 
   const handleRemove = () => {
     setPreview('')
-    data.imageUrl = ''
-    data.fileName = ''
+    if (data?.onUpdateNodeData && typeof data.onUpdateNodeData === 'function') {
+      (data.onUpdateNodeData as (id: string, data: any) => void)(id, {
+        imageUrl: '',
+        fileName: ''
+      })
+    }
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
   }
 
   return (
-    <Card 
-      className={`relative min-w-[280px] bg-card border-2 transition-all ${
-        selected ? 'border-primary shadow-lg' : 'border-border'
-      }`}
+    <Card
+      className={`relative min-w-[280px] bg-card border-2 transition-all ${selected ? 'border-primary shadow-lg' : 'border-border'
+        }`}
     >
       <div className="p-3">
         {/* Header */}
@@ -83,9 +90,9 @@ export const ImageUploadNode = memo(({ data, selected }: any) => {
         <div className="space-y-2">
           {preview ? (
             <div className="relative group">
-              <img 
-                src={preview} 
-                alt="Preview" 
+              <img
+                src={preview}
+                alt="Preview"
                 className="w-full h-32 object-cover rounded-md"
               />
               <Button
@@ -145,3 +152,11 @@ export const ImageUploadNode = memo(({ data, selected }: any) => {
 })
 
 ImageUploadNode.displayName = 'ImageUploadNode'
+
+export const ImageUploadProperties = ({ node, onUpdateNode }: { node: any, onUpdateNode: (id: string, data: any) => void }) => {
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-muted-foreground">Upload an image directly on the node. No additional configuration needed here.</p>
+    </div>
+  )
+}

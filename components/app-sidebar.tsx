@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   LogOut,
   Workflow,
+  Settings,
 } from "lucide-react"
 
 import {
@@ -45,6 +46,11 @@ const data = {
       url: "/dashboard",
       icon: LayoutDashboard,
     },
+    {
+      title: "Providers",
+      url: "/dashboard/providers",
+      icon: Settings,
+    },
   ],
 }
 
@@ -52,17 +58,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const router = useRouter()
   const session = authClient.useSession()
-  
+
   const user = session.data?.user || data.user
 
   const handleSignOut = async () => {
-      await authClient.signOut({
-          fetchOptions: {
-              onSuccess: () => {
-                  router.push("/login")
-              }
-          }
-      })
+    await authClient.signOut({
+      fetchOptions: {
+        onSuccess: () => {
+          router.push("/login")
+        }
+      }
+    })
   }
 
   return (
