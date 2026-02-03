@@ -1,7 +1,7 @@
 "use client"
 
-import { memo, useState } from 'react'
-import { Handle, Position, NodeProps } from '@xyflow/react'
+import { memo, useState, useEffect } from 'react'
+import { Handle, Position, NodeProps, useUpdateNodeInternals, useReactFlow, useEdges } from '@xyflow/react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -9,6 +9,7 @@ import { Image as ImageIcon, Loader2, AlertCircle, Download } from 'lucide-react
 import { getGoogleApiKey } from '@/lib/utils/api-keys'
 import { z } from 'zod'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ImageModelNode } from './image-model-node'
 
 const inputSchema = z.object({
     prompt: z.string().min(1, 'Prompt is required'),
@@ -20,45 +21,75 @@ export const NanoBananaNode = memo(({ data, selected, id }: NodeProps) => {
     const [output, setOutput] = useState<string>('');
     const [error, setError] = useState<string>('');
 
+    // Get React Flow instance to access current node/edge state
+    const { getNodes } = useReactFlow();
+    const edges = useEdges();
+
     const prompt = (data?.connectedPrompt as string) || (data?.prompt as string) || '';
     const aspectRatio = (data?.aspectRatio as string) || '1:1';
+    const imageInputCount = (data?.imageInputCount as number) || 0;
 
-    const inputs = (data?.inputs || [
+    const updateNodeInternals = useUpdateNodeInternals();
+
+    // Helper function to get fresh data from connected nodes
+    const getFreshConnectedData = () => {
+        const nodes = getNodes();
+        const incomingEdges = edges.filter(edge => edge.target === id);
+
+        let freshPrompt = '';
+        const freshImages: { [key: string]: string } = {};
+
+        incomingEdges.forEach(edge => {
+            const sourceNode = nodes.find(n => n.id === edge.source);
+            if (!sourceNode) return;
+
+            const targetHandle = edge.targetHandle;
+
+            // Get prompt from text input
+            if (targetHandle === 'prompt') {
+                if (sourceNode.type === 'textInput') {
+                    freshPrompt = (sourceNode.data?.text as string) || '';
+                }
+            }
+            // Get images from image handles
+            else if (targetHandle === 'image' || targetHandle?.startsWith('image_')) {
+                const imageKey = targetHandle === 'image' ? 'image' : targetHandle;
+                if (sourceNode.type === 'imageUpload') {
+                    freshImages[imageKey] = (sourceNode.data?.imageUrl as string) || '';
+                } else if (sourceNode.type === 'nanoBanana' || sourceNode.type === 'nanoBananaPro' || sourceNode.type === 'imagen') {
+                    freshImages[imageKey] = (sourceNode.data?.output as string) || '';
+                }
+            }
+        });
+
+        return { freshPrompt, freshImages };
+    };
+
+    // Notify React Flow when handles change
+    useEffect(() => {
+        updateNodeInternals(id);
+    }, [imageInputCount, id, updateNodeInternals]);
+
+    const handleAddInput = () => {
+        if (data?.onUpdateNodeData) {
+            (data.onUpdateNodeData as (id: string, data: any) => void)(id, {
+                imageInputCount: imageInputCount + 1
+            });
+        }
+    };
+
+    const inputs = [
         { id: 'prompt', label: 'Prompt', type: 'text', required: true },
-    ]) as Array<{
-        id: string
-        label: string
-        type: 'text' | 'image'
-        required?: boolean
-    }>;
+        ...Array.from({ length: imageInputCount }).map((_, i) => ({
+            id: `image_${i}`,
+            label: `Ref Image ${i + 1}`,
+            type: 'image'
+        }))
+    ] as any[];
 
     const outputs = (data?.outputs || [
         { id: 'output', label: 'Image', type: 'image' }
-    ]) as Array<{
-        id: string
-        label: string
-        type: 'text' | 'image'
-    }>;
-
-    const getHandleTop = (index: number, total: number) => {
-        if (total <= 1) {
-            return '50%'
-        }
-        const start = 30
-        const end = 70
-        const step = (end - start) / (total - 1)
-        return `${start + index * step}%`
-    }
-
-    const getHandleClass = (kind: 'text' | 'image') =>
-        kind === 'image'
-            ? '!bg-emerald-400 !border-emerald-200'
-            : '!bg-sky-400 !border-sky-200'
-
-    const getLabelClass = (kind: 'text' | 'image') =>
-        kind === 'image'
-            ? 'text-emerald-300'
-            : 'text-sky-300'
+    ]) as any[];
 
     const handleRun = async () => {
         try {
@@ -70,10 +101,35 @@ export const NanoBananaNode = memo(({ data, selected, id }: NodeProps) => {
                 throw new Error('Google AI API key not configured. Please add it in the sidebar.');
             }
 
+            // Get FRESH data from connected nodes
+            const { freshPrompt, freshImages } = getFreshConnectedData();
+            const finalPrompt = freshPrompt || prompt;
+
+            console.log('[Fresh Data]', { freshPrompt, freshImages, finalPrompt });
+
             inputSchema.parse({
-                prompt,
+                prompt: finalPrompt,
                 aspectRatio
             });
+
+            const contentsParts: any[] = [{ text: finalPrompt }];
+
+            // Handle multiple reference images if connected (using FRESH images)
+            for (let i = 0; i < imageInputCount; i++) {
+                const connectedImage = freshImages[`image_${i}`];
+                if (connectedImage) {
+                    const match = connectedImage.match(/^data:(image\/[a-z]+);base64,/);
+                    const mimeType = match ? match[1] : 'image/png';
+                    const base64Data = connectedImage.includes(',') ? connectedImage.split(',')[1] : connectedImage;
+
+                    contentsParts.push({
+                        inlineData: {
+                            mimeType: mimeType,
+                            data: base64Data
+                        }
+                    });
+                }
+            }
 
             const response = await fetch(
                 `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${apiKey}`,
@@ -84,10 +140,10 @@ export const NanoBananaNode = memo(({ data, selected, id }: NodeProps) => {
                     },
                     body: JSON.stringify({
                         contents: [{
-                            parts: [{ text: prompt }]
+                            parts: contentsParts
                         }],
                         generationConfig: {
-                            responseModalities: ['IMAGE'],
+                            responseModalities: ['TEXT', 'IMAGE'],
                             imageConfig: {
                                 aspectRatio: aspectRatio
                             }
@@ -102,16 +158,43 @@ export const NanoBananaNode = memo(({ data, selected, id }: NodeProps) => {
 
             const result = await response.json();
 
-            if (result.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data) {
-                const imageData = result.candidates[0].content.parts[0].inlineData.data;
-                const imageUrl = `data:image/png;base64,${imageData}`;
+            console.log('[Nano Banana API Response]', {
+                fullResponse: result,
+                hasCandidates: !!result.candidates,
+                candidatesLength: result.candidates?.length,
+                firstCandidate: result.candidates?.[0],
+                parts: result.candidates?.[0]?.content?.parts,
+            });
+
+            // Extract all parts and filter for images
+            const parts = result.candidates?.[0]?.content?.parts || [];
+            const imageParts = parts.filter((p: any) => p.inlineData?.mimeType?.startsWith('image/'));
+
+            if (imageParts.length > 0) {
+                // Get the last image part (in case there are multiple)
+                const imageData = imageParts[imageParts.length - 1].inlineData.data;
+                const mimeType = imageParts[imageParts.length - 1].inlineData.mimeType || 'image/png';
+                const imageUrl = `data:${mimeType};base64,${imageData}`;
+
+                console.log('[Image Generated]', {
+                    mimeType,
+                    dataLength: imageData.length,
+                    imageUrl: imageUrl.substring(0, 100) + '...'
+                });
+
                 setOutput(imageUrl);
 
-                if (data?.onOutputChange && typeof data.onOutputChange === 'function') {
-                    (data.onOutputChange as (id: string, output: string) => void)(id, imageUrl);
+                if (data?.onUpdateNodeData && typeof data.onUpdateNodeData === 'function') {
+                    (data.onUpdateNodeData as (id: string, data: any) => void)(id, { output: imageUrl });
                 }
             } else {
-                throw new Error('No image data in response');
+                console.error('[API Response Error]', {
+                    candidates: result.candidates,
+                    error: result.error,
+                    parts,
+                    fullResponse: JSON.stringify(result, null, 2)
+                });
+                throw new Error('No image data in response. Check console for details.');
             }
         } catch (err) {
             if (err instanceof z.ZodError) {
@@ -132,114 +215,22 @@ export const NanoBananaNode = memo(({ data, selected, id }: NodeProps) => {
         link.click();
     };
 
-    const hasOutput = !!output || !!error;
-
-    const cardStyle = hasOutput
-        ? `relative min-w-[320px] bg-card border-2 transition-all ${selected ? 'border-primary shadow-lg' : 'border-border'}`
-        : `relative min-w-[200px] bg-background/50 border-2 border-dashed transition-all ${selected ? 'border-primary bg-background' : 'border-border/50'}`;
-
     return (
-        <Card className={cardStyle}>
-            <div className="p-3">
-                <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-yellow-500 to-orange-500 flex items-center justify-center">
-                            <ImageIcon className="w-4 h-4 text-white" />
-                        </div>
-                        <h3 className="font-semibold text-sm">Nano Banana</h3>
-                    </div>
-                </div>
-
-                <Button
-                    onClick={handleRun}
-                    disabled={isRunning}
-                    className="w-full mb-1"
-                    size="sm"
-                    variant={hasOutput ? "default" : "secondary"}
-                >
-                    {isRunning ? (
-                        <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Generating...
-                        </>
-                    ) : (
-                        'Generate Image'
-                    )}
-                </Button>
-
-                {error && (
-                    <div className="p-2 bg-red-50 border border-red-200 rounded text-xs text-red-600 my-2 flex items-start gap-2">
-                        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                        <span>{error}</span>
-                    </div>
-                )}
-
-                {output && (
-                    <div className="space-y-2 mt-2">
-                        <div className="flex items-center justify-between">
-                            <Label className="text-xs text-muted-foreground">Generated Image</Label>
-                            <Button
-                                onClick={handleDownload}
-                                size="sm"
-                                variant="ghost"
-                                className="h-6 px-2"
-                            >
-                                <Download className="w-3 h-3 mr-1" />
-                                Download
-                            </Button>
-                        </div>
-                        <div className="relative rounded overflow-hidden bg-muted">
-                            <img
-                                src={output}
-                                alt="Generated"
-                                className="w-full h-auto"
-                            />
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {inputs.map((input, index) => (
-                <div
-                    key={`${input.id}-label`}
-                    className={`absolute left-[-84px] flex items-center gap-2 text-xs -translate-y-1/2 ${getLabelClass(input.type)} ${!hasOutput && !selected ? 'opacity-50' : 'opacity-100'}`}
-                    style={{ top: getHandleTop(index, inputs.length) }}
-                >
-                    <span>{input.label}{input.required ? '*' : ''}</span>
-                </div>
-            ))}
-            {outputs.map((output, index) => (
-                <div
-                    key={`${output.id}-label`}
-                    className={`absolute right-[-64px] flex items-center gap-2 text-xs -translate-y-1/2 ${getLabelClass(output.type)} ${!hasOutput && !selected ? 'opacity-50' : 'opacity-100'}`}
-                    style={{ top: getHandleTop(index, outputs.length) }}
-                >
-                    <span>{output.label}</span>
-                </div>
-            ))}
-
-            {inputs.map((input, index) => (
-                <Handle
-                    key={input.id}
-                    type="target"
-                    position={Position.Left}
-                    id={input.id}
-                    className={`!w-3 !h-3 !border-2 ${getHandleClass(input.type)}`}
-                    style={{ top: getHandleTop(index, inputs.length) }}
-                />
-            ))}
-
-            {outputs.map((output, index) => (
-                <Handle
-                    key={output.id}
-                    type="source"
-                    position={Position.Right}
-                    id={output.id}
-                    className={`!w-3 !h-3 !border-2 ${getHandleClass(output.type)}`}
-                    style={{ top: getHandleTop(index, outputs.length) }}
-                />
-            ))}
-        </Card>
+        <ImageModelNode
+            id={id}
+            selected={selected}
+            title="Nano Banana"
+            icon={ImageIcon}
+            iconClassName="bg-gradient-to-br from-yellow-500 to-orange-500"
+            isRunning={isRunning}
+            imageUrl={output}
+            error={error}
+            onRun={handleRun}
+            onDownload={handleDownload}
+            onAddInput={handleAddInput}
+            inputs={inputs}
+            outputs={outputs}
+        />
     )
 })
 

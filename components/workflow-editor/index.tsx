@@ -101,27 +101,11 @@ function getEdgeColorFromSourceHandle(sourceHandle?: string | null): string {
   return kind ? EDGE_COLORS[kind] : EDGE_COLORS.default
 }
 
-function getNodeHandles(nodeType: string): NodeHandleMeta {
+function getNodeHandles(nodeType: string | undefined, data?: any): NodeHandleMeta {
+  if (!nodeType) return { inputs: [], outputs: [] }
+
   switch (nodeType) {
     case 'imagen':
-      return {
-        inputs: [
-          {
-            id: 'prompt',
-            label: 'Prompt',
-            type: 'text',
-            required: true,
-            allowedSourceIds: [OUTPUT_HANDLE_IDS.text],
-          },
-        ],
-        outputs: [
-          {
-            id: OUTPUT_HANDLE_IDS.image,
-            label: 'Image',
-            type: 'image',
-          },
-        ],
-      }
       return {
         inputs: [
           {
@@ -162,6 +146,7 @@ function getNodeHandles(nodeType: string): NodeHandleMeta {
       }
     case 'nanoBanana':
     case 'nanoBananaPro':
+      const imageCount = (data?.imageInputCount as number) || 1;
       return {
         inputs: [
           {
@@ -171,6 +156,12 @@ function getNodeHandles(nodeType: string): NodeHandleMeta {
             required: true,
             allowedSourceIds: [OUTPUT_HANDLE_IDS.text],
           },
+          ...Array.from({ length: imageCount }).map((_, i) => ({
+            id: `image_${i}`,
+            label: `Ref Image ${i + 1}`,
+            type: 'image' as const,
+            allowedSourceIds: [OUTPUT_HANDLE_IDS.image],
+          })),
         ],
         outputs: [
           {
@@ -244,23 +235,57 @@ function WorkflowEditorInner() {
 
           const targetHandle = edge.targetHandle
 
+          console.log('[Data Propagation]', {
+            nodeId: node.id,
+            nodeType: node.type,
+            targetHandle,
+            sourceNodeType: sourceNode.type,
+            sourceNodeData: sourceNode.data,
+            edgeId: edge.id
+          });
+
           // Map source data to target connected fields
           if (targetHandle === 'prompt') {
-            // Text output from source node
             if (sourceNode.type === 'textInput') {
               connectedData.connectedPrompt = sourceNode.data.text || ''
+              console.log('[Prompt Data]', {
+                sourceType: 'textInput',
+                textValue: sourceNode.data.text,
+                connectedPrompt: connectedData.connectedPrompt
+              });
             } else if (sourceNode.data.output) {
               connectedData.connectedPrompt = sourceNode.data.output
+              console.log('[Prompt Data]', {
+                sourceType: 'output',
+                outputValue: sourceNode.data.output,
+                connectedPrompt: connectedData.connectedPrompt
+              });
             }
-          } else if (targetHandle === 'image') {
-            // Image output from source node
+          } else if (targetHandle === 'image' || targetHandle?.startsWith('image_')) {
+            const dataKey = targetHandle === 'image' ? 'connectedImage' : `connectedImage_${targetHandle.split('_')[1]}`
+            console.log('[Image Handle]', {
+              targetHandle,
+              dataKey,
+              hasData: !!sourceNode.data.imageUrl || !!sourceNode.data.output
+            });
+
             if (sourceNode.type === 'imageUpload') {
-              connectedData.connectedImage = sourceNode.data.imageUrl || ''
+              connectedData[dataKey] = sourceNode.data.imageUrl || ''
+            } else if (sourceNode.type === 'nanoBanana' || sourceNode.type === 'nanoBananaPro' || sourceNode.type === 'imagen') {
+              // Get output from model nodes
+              connectedData[dataKey] = sourceNode.data.output
             } else if (sourceNode.data.imageOutput) {
-              connectedData.connectedImage = sourceNode.data.imageOutput
+              connectedData[dataKey] = sourceNode.data.imageOutput
             }
           }
         })
+
+        console.log('[Final Connected Data]', {
+          nodeId: node.id,
+          nodeType: node.type,
+          connectedData,
+          hasPrompt: !!connectedData.connectedPrompt
+        });
 
         // Only update if there are connected data changes
         if (incomingEdges.length > 0) {
@@ -307,8 +332,17 @@ function WorkflowEditorInner() {
         return false
       }
 
+      // Prevent multiple connections to the same target handle
+      const existingConnection = edges.find(
+        (edge) => edge.target === target && edge.targetHandle === targetHandle
+      )
+      if (existingConnection) {
+        return false // Target handle already has a connection
+      }
+
       const targetNode = nodes.find((node) => node.id === target)
-      const rawInputs = (targetNode?.data as WorkflowNodeData | undefined)?.inputs
+      const handles = targetNode ? getNodeHandles(targetNode.type, targetNode.data) : {}
+      const rawInputs = handles.inputs
       const inputs: HandleMeta[] = Array.isArray(rawInputs) ? rawInputs : []
       const targetInput = inputs.find((input) => input.id === targetHandle)
       if (!targetInput) {
@@ -316,7 +350,7 @@ function WorkflowEditorInner() {
       }
       return (targetInput.allowedSourceIds || []).includes(sourceHandle)
     },
-    [nodes]
+    [nodes, edges]
   )
 
   const onConnect = useCallback(
@@ -400,7 +434,7 @@ function WorkflowEditorInner() {
             resolution: '720p',
             durationSeconds: 4,
           }),
-          ...getNodeHandles(nodeType),
+          ...getNodeHandles(nodeType, {}),
           onUpdateNodeData: updateNodeData,
         },
       } satisfies Node<WorkflowNodeData>
