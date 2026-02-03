@@ -223,7 +223,7 @@ function WorkflowEditorInner() {
   const [isLibraryOpen, setIsLibraryOpen] = useState(false)
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false)
   const [connectingSourceHandle, setConnectingSourceHandle] = useState<string | null>(null)
-  const [isAnimated, setIsAnimated] = useState(false)
+  const [isAnimated, setIsAnimated] = useState(true)
   const { screenToFlowPosition } = useReactFlow()
 
   const toggleAnimation = useCallback(() => {
