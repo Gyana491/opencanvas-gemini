@@ -6,6 +6,7 @@ import {
   ReactFlowProvider,
   Background,
   Controls,
+  ControlButton,
   addEdge,
   useNodesState,
   useEdgesState,
@@ -18,6 +19,7 @@ import {
   MarkerType,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import { Activity } from 'lucide-react'
 
 import { EditorSidebar } from './editor-sidebar'
 import { NodeLibrary } from './node-library'
@@ -172,6 +174,7 @@ function getNodeHandles(nodeType: string | undefined, data?: any): NodeHandleMet
         ],
       }
     case 'veo3':
+      const refImageCount = (data?.imageInputCount as number) || 0;
       return {
         inputs: [
           {
@@ -180,6 +183,24 @@ function getNodeHandles(nodeType: string | undefined, data?: any): NodeHandleMet
             type: 'text',
             required: true,
             allowedSourceIds: [OUTPUT_HANDLE_IDS.text],
+          },
+          {
+            id: 'image',
+            label: 'First Frame',
+            type: 'image',
+            allowedSourceIds: [OUTPUT_HANDLE_IDS.image],
+          },
+          ...Array.from({ length: refImageCount }).map((_, i) => ({
+            id: `ref_image_${i}`,
+            label: `Ref ${i + 1}`,
+            type: 'image' as const,
+            allowedSourceIds: [OUTPUT_HANDLE_IDS.image],
+          })),
+          {
+            id: 'video',
+            label: 'Extend Video',
+            type: 'video',
+            allowedSourceIds: [OUTPUT_HANDLE_IDS.video],
           },
         ],
         outputs: [
@@ -202,7 +223,18 @@ function WorkflowEditorInner() {
   const [isLibraryOpen, setIsLibraryOpen] = useState(false)
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false)
   const [connectingSourceHandle, setConnectingSourceHandle] = useState<string | null>(null)
+  const [isAnimated, setIsAnimated] = useState(false)
   const { screenToFlowPosition } = useReactFlow()
+
+  const toggleAnimation = useCallback(() => {
+    setIsAnimated((prev) => !prev)
+    setEdges((eds) =>
+      eds.map((edge) => ({
+        ...edge,
+        animated: !isAnimated,
+      }))
+    )
+  }, [isAnimated, setEdges])
 
   const updateNodeData = useCallback((nodeId: string, data: any) => {
     setNodes((nds) =>
@@ -360,6 +392,7 @@ function WorkflowEditorInner() {
         addEdge(
           {
             ...connection,
+            animated: isAnimated,
             style: { stroke, strokeWidth: 2 },
             markerEnd: { type: MarkerType.ArrowClosed, color: stroke },
           },
@@ -367,7 +400,7 @@ function WorkflowEditorInner() {
         )
       )
     },
-    [setEdges]
+    [setEdges, isAnimated]
   )
 
   const onConnectStart = useCallback<OnConnectStart>((_, params) => {
@@ -432,7 +465,9 @@ function WorkflowEditorInner() {
           ...(nodeType === 'veo3' && {
             prompt: '',
             resolution: '720p',
-            durationSeconds: 4,
+            durationSeconds: '8',
+            aspectRatio: '16:9',
+            imageInputCount: 0,
           }),
           ...getNodeHandles(nodeType, {}),
           onUpdateNodeData: updateNodeData,
@@ -495,7 +530,9 @@ function WorkflowEditorInner() {
         ...(nodeType === 'veo3' && {
           prompt: '',
           resolution: '720p',
-          durationSeconds: 4,
+          durationSeconds: '8',
+          aspectRatio: '16:9',
+          imageInputCount: 0,
         }),
         ...getNodeHandles(nodeType),
         onUpdateNodeData: updateNodeData,
@@ -537,7 +574,17 @@ function WorkflowEditorInner() {
           className="bg-background"
         >
           <Background />
-          <Controls position="bottom-center" />
+          <Controls position="bottom-center">
+            <ControlButton
+              onClick={toggleAnimation}
+              title={isAnimated ? "Disable Animated Edges" : "Enable Animated Edges"}
+              className={isAnimated ? "!bg-blue-500 !border-blue-500 hover:!bg-blue-600" : ""}
+            >
+              <Activity
+                className={`h-4 w-4 ${isAnimated ? 'text-white' : 'text-gray-500'}`}
+              />
+            </ControlButton>
+          </Controls>
         </ReactFlow>
 
         {/* Node Library - slides from left, positioned after icon bar */}

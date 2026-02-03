@@ -1,5 +1,7 @@
 # OpenCanvas
 
+
+
 ## What is OpenCanvas?
 
 OpenCanvas is a visual workflow builder that lets you create consistent, repeatable AI workflows using Google's Gemini AI models. Think of it as a canvas where you connect different AI tools together like building blocks to create powerful automated workflows for text generation, image analysis, content creation, and more.
