@@ -572,6 +572,7 @@ function WorkflowEditorInner() {
           }}
           fitView
           className="bg-background"
+          proOptions={{ hideAttribution: true }}
         >
           <Background />
           <Controls position="bottom-center">
