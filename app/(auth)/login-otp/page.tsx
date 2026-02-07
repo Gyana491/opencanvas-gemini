@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import {
@@ -24,6 +24,14 @@ import { authClient } from "@/lib/auth-client"
 import { toast } from "sonner"
 
 export default function LoginOTPPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center p-4">Loading...</div>}>
+      <LoginOTPContent />
+    </Suspense>
+  )
+}
+
+function LoginOTPContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [step, setStep] = useState<"email" | "verify">("email")
