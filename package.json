@@ -6,7 +6,8 @@
     "dev": "npx tsx lib/prisma.ts && next dev",
     "build": "next build",
     "start": "next start && npx tsx lib/prisma.ts",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.20",
