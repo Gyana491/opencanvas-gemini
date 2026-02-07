@@ -50,7 +50,7 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { ImportDialog } from "@/components/workflow-editor/import-dialog"
-import { DashboardExportDialog } from "@/components/workflow-editor/dashboard-export-dialog"
+import { ExportDialog } from "@/components/workflow-editor/export-dialog"
 
 interface Workflow {
   id: string
@@ -161,6 +161,20 @@ export default function DashboardPage() {
   const openExportDialog = (workflow: Workflow) => {
     setWorkflowToExport(workflow)
     setIsExportDialogOpen(true)
+  }
+
+  const getWorkflowDataForExport = async () => {
+    if (!workflowToExport) {
+      throw new Error("No workflow selected")
+    }
+
+    const res = await fetch(`/api/workflows/${workflowToExport.id}`)
+    if (!res.ok) {
+      throw new Error("Failed to fetch workflow")
+    }
+
+    const workflow = await res.json()
+    return workflow.data
   }
 
   const handleRenameSubmit = async () => {
@@ -426,7 +440,7 @@ export default function DashboardPage() {
       />
 
       {workflowToExport && (
-        <DashboardExportDialog
+        <ExportDialog
           isOpen={isExportDialogOpen}
           onClose={() => {
             setIsExportDialogOpen(false)
@@ -434,6 +448,7 @@ export default function DashboardPage() {
           }}
           workflowId={workflowToExport.id}
           workflowName={workflowToExport.name}
+          getWorkflowData={getWorkflowDataForExport}
         />
       )}
     </div>

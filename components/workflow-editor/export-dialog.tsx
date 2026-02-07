@@ -11,40 +11,76 @@ import { Button } from "@/components/ui/button"
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { FileJson, Package, Loader2 } from "lucide-react"
 import { toast } from "sonner"
-import { useReactFlow } from '@xyflow/react'
+import type { Edge, Node, Viewport } from '@xyflow/react'
 import { exportWorkflowAsZip } from '@/lib/utils/export-workflow'
 import { Progress } from "@/components/ui/progress"
+import { safeValidateWorkflow } from '@/lib/validation/workflow-schema'
+
+type WorkflowGraphData = {
+    nodes?: unknown
+    edges?: unknown
+    viewport?: unknown
+}
 
 interface ExportDialogProps {
     isOpen: boolean
     onClose: () => void
     workflowId: string | null
     workflowName?: string
+    getWorkflowData: () => Promise<WorkflowGraphData> | WorkflowGraphData
 }
 
-export function ExportDialog({ isOpen, onClose, workflowId, workflowName = 'workflow' }: ExportDialogProps) {
-    const { getNodes, getEdges, getViewport } = useReactFlow()
+function normalizeWorkflowData(data: WorkflowGraphData): {
+    nodes: unknown[]
+    edges: unknown[]
+    viewport: Viewport
+} {
+    const nodes = Array.isArray(data?.nodes) ? data.nodes : []
+    const edges = Array.isArray(data?.edges) ? data.edges : []
+
+    const rawViewport = data?.viewport as Record<string, unknown> | undefined
+    const viewport: Viewport = {
+        x: typeof rawViewport?.x === 'number' ? rawViewport.x : 0,
+        y: typeof rawViewport?.y === 'number' ? rawViewport.y : 0,
+        zoom: typeof rawViewport?.zoom === 'number' ? rawViewport.zoom : 1,
+    }
+
+    return { nodes, edges, viewport }
+}
+
+export function ExportDialog({
+    isOpen,
+    onClose,
+    workflowId,
+    workflowName = 'workflow',
+    getWorkflowData,
+}: ExportDialogProps) {
     const [isExporting, setIsExporting] = useState(false)
     const [exportProgress, setExportProgress] = useState(0)
     const [exportMessage, setExportMessage] = useState('')
 
     const handleExportJson = async () => {
         try {
-            const rawNodes = getNodes()
-            const edges = getEdges()
-            const viewport = getViewport()
+            const workflowData = await getWorkflowData()
+            const normalized = normalizeWorkflowData(workflowData)
+            const validation = safeValidateWorkflow({
+                id: workflowId ?? undefined,
+                name: workflowName,
+                ...normalized,
+            })
 
-            // Sanitize nodes to remove asset URLs (opencanvas:// references if any remain, though R2 urls are fine)
-            // Ideally we keep R2 URLs as they are public URLs.
-            // But if we want to be safe, we can strip sensitive data.
-            // For now, let's keep it simple and just export the data structure.
+            if (!validation.success) {
+                console.error('Validation errors:', validation.details)
+                toast.error('Invalid workflow data')
+                return
+            }
 
             const data = {
                 id: workflowId,
                 name: workflowName,
-                nodes: rawNodes,
-                edges,
-                viewport,
+                nodes: validation.data.nodes,
+                edges: validation.data.edges,
+                viewport: validation.data.viewport,
                 exportedAt: new Date().toISOString(),
             }
 
@@ -68,16 +104,28 @@ export function ExportDialog({ isOpen, onClose, workflowId, workflowName = 'work
         setExportMessage('Starting export...')
 
         try {
-            const nodes = getNodes()
-            const edges = getEdges()
-            const viewport = getViewport()
+            const workflowData = await getWorkflowData()
+            const normalized = normalizeWorkflowData(workflowData)
+            const validation = safeValidateWorkflow({
+                id: workflowId ?? undefined,
+                name: workflowName,
+                ...normalized,
+            })
+            if (!validation.success) {
+                console.error('Validation errors:', validation.details)
+                toast.error('Invalid workflow data')
+                setIsExporting(false)
+                return
+            }
+
+            const { nodes, edges, viewport } = validation.data
 
             await exportWorkflowAsZip(
                 workflowId,
                 workflowName,
-                nodes,
-                edges,
-                viewport,
+                nodes as unknown as Node[],
+                edges as unknown as Edge[],
+                viewport as Viewport,
                 (progress, message) => {
                     setExportProgress(progress)
                     setExportMessage(message)
@@ -103,7 +151,7 @@ export function ExportDialog({ isOpen, onClose, workflowId, workflowName = 'work
     }
 
     return (
-        <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+        <Dialog open={isOpen} onOpenChange={(open) => !open && !isExporting && onClose()}>
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                     <DialogTitle>Export Workflow</DialogTitle>
@@ -173,7 +221,7 @@ export function ExportDialog({ isOpen, onClose, workflowId, workflowName = 'work
     )
 }
 
-function downloadJson(data: any, filename: string) {
+function downloadJson(data: unknown, filename: string) {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')

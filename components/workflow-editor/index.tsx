@@ -247,7 +247,7 @@ function WorkflowEditorInner() {
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false)
   const [connectingSourceHandle, setConnectingSourceHandle] = useState<string | null>(null)
   const [isAnimated, setIsAnimated] = useState(true)
-  const { screenToFlowPosition, setViewport, getViewport } = useReactFlow()
+  const { screenToFlowPosition, setViewport, getViewport, getNodes, getEdges } = useReactFlow()
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false)
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
   const [isEditingName, setIsEditingName] = useState(false)
@@ -990,6 +990,11 @@ function WorkflowEditorInner() {
           onClose={() => setIsExportDialogOpen(false)}
           workflowId={workflowId}
           workflowName={workflowName || "Workflow"}
+          getWorkflowData={() => ({
+            nodes: getNodes(),
+            edges: getEdges(),
+            viewport: getViewport(),
+          })}
         />
         <ImportDialog
           isOpen={isImportDialogOpen}
