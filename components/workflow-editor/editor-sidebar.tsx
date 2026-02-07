@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -67,7 +68,13 @@ export function EditorSidebar({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="h-10 w-10 gap-1 data-[state=open]:bg-accent px-0">
-              <Workflow className="size-5" />
+              <Image 
+                src="/logo.png" 
+                alt="OpenCanvas Logo" 
+                width={20} 
+                height={20}
+                className="object-contain"
+              />
               <ChevronDown className="size-3 text-muted-foreground" />
             </Button>
           </DropdownMenuTrigger>

@@ -29,6 +29,11 @@ function AvatarImage({
   className,
   ...props
 }: React.ComponentProps<typeof AvatarPrimitive.Image>) {
+  // Don't render if src is empty or null to avoid browser warning
+  if (!props.src || props.src === "") {
+    return null
+  }
+  
   return (
     <AvatarPrimitive.Image
       data-slot="avatar-image"
