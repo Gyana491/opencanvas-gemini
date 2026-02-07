@@ -6,7 +6,6 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Image as ImageIcon, Loader2, AlertCircle, Download } from 'lucide-react'
-import { getGoogleApiKey } from '@/lib/utils/api-keys'
 import { z } from 'zod'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ImageModelNode } from './image-model-node'
@@ -96,11 +95,6 @@ export const NanoBananaNode = memo(({ data, selected, id }: NodeProps) => {
             setIsRunning(true);
             setError('');
 
-            const apiKey = getGoogleApiKey();
-            if (!apiKey) {
-                throw new Error('Google AI API key not configured. Please add it in the sidebar.');
-            }
-
             // Get FRESH data from connected nodes
             const { freshPrompt, freshImages } = getFreshConnectedData();
             const finalPrompt = freshPrompt || prompt;
@@ -131,29 +125,27 @@ export const NanoBananaNode = memo(({ data, selected, id }: NodeProps) => {
                 }
             }
 
-            const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${apiKey}`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        contents: [{
-                            parts: contentsParts
-                        }],
-                        generationConfig: {
-                            responseModalities: ['TEXT', 'IMAGE'],
-                            imageConfig: {
-                                aspectRatio: aspectRatio
-                            }
+            const response = await fetch('/api/providers/google/gemini-2.5-flash-image', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: contentsParts
+                    }],
+                    generationConfig: {
+                        responseModalities: ['TEXT', 'IMAGE'],
+                        imageConfig: {
+                            aspectRatio: aspectRatio
                         }
-                    }),
-                }
-            );
+                    }
+                }),
+            });
 
             if (!response.ok) {
-                throw new Error(`API request failed: ${response.statusText}`);
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `API request failed: ${response.statusText}`);
             }
 
             const result = await response.json();

@@ -6,7 +6,6 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Image as ImageIcon, Loader2, AlertCircle, Download, Sparkles } from 'lucide-react'
-import { getGoogleApiKey } from '@/lib/utils/api-keys'
 import { z } from 'zod'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
@@ -103,11 +102,6 @@ export const NanoBananaProNode = memo(({ data, selected, id }: NodeProps) => {
             setError('');
             setThinkingOutput('');
 
-            const apiKey = getGoogleApiKey();
-            if (!apiKey) {
-                throw new Error('Google AI API key not configured. Please add it in the sidebar.');
-            }
-
             // Get FRESH data from connected nodes
             const { freshPrompt, freshImages } = getFreshConnectedData();
             const finalPrompt = freshPrompt || prompt;
@@ -156,19 +150,17 @@ export const NanoBananaProNode = memo(({ data, selected, id }: NodeProps) => {
                 requestBody.tools = [{ googleSearch: {} }];
             }
 
-            const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${apiKey}`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(requestBody),
-                }
-            );
+            const response = await fetch('/api/providers/google/gemini-3-pro-image-preview', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(requestBody),
+            });
 
             if (!response.ok) {
-                throw new Error(`API request failed: ${response.statusText}`);
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `API request failed: ${response.statusText}`);
             }
 
             const result = await response.json();

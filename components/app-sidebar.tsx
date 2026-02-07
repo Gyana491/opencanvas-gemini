@@ -7,8 +7,7 @@ import {
   ChevronRight,
   LayoutDashboard,
   LogOut,
-  Workflow,
-  Settings,
+  Workflow
 } from "lucide-react"
 
 import {
@@ -45,12 +44,7 @@ const data = {
       title: "Dashboard",
       url: "/dashboard",
       icon: LayoutDashboard,
-    },
-    {
-      title: "Providers",
-      url: "/dashboard/providers",
-      icon: Settings,
-    },
+    }
   ],
 }
 

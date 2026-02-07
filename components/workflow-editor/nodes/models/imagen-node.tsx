@@ -6,9 +6,7 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Image as ImageIcon, Loader2, AlertCircle, Download } from 'lucide-react'
-import { experimental_generateImage as generateImage } from 'ai'
-import { createGoogleGenerativeAI } from '@ai-sdk/google'
-import { getGoogleApiKey } from '@/lib/utils/api-keys'
+
 import { z } from 'zod'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ImageModelNode } from './image-model-node'
@@ -39,26 +37,31 @@ export const ImagenNode = memo(({ data, selected, id }: NodeProps) => {
             setIsRunning(true);
             setError('');
 
-            const apiKey = getGoogleApiKey();
-            if (!apiKey) {
-                throw new Error('Google AI API key not configured. Please add it in the providers page.');
-            }
-
             inputSchema.parse({
                 prompt,
                 aspectRatio: aspectRatio as any
             });
 
-            const google = createGoogleGenerativeAI({ apiKey });
-
-            const { image } = await generateImage({
-                model: google.image('imagen-4.0-generate-001'),
-                prompt,
-                aspectRatio: aspectRatio as any,
+            const response = await fetch('/api/providers/google/imagen-4.0-generate-001', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    prompt,
+                    aspectRatio: aspectRatio
+                }),
             });
 
-            // Convert image to data URL
-            const imageDataUrl = `data:image/png;base64,${image.base64}`;
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `API request failed: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+
+            // The server returns { image: { base64: ... } }
+            const imageDataUrl = `data:image/png;base64,${data.image.base64}`;
             setImageUrl(imageDataUrl);
 
             if (data?.onUpdateNodeData && typeof data.onUpdateNodeData === 'function') {

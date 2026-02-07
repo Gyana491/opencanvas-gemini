@@ -6,7 +6,6 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Video, Loader2, AlertCircle, Download } from 'lucide-react'
-import { getGoogleApiKey } from '@/lib/utils/api-keys'
 import { z } from 'zod'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { VideoModelNode } from './video-model-node'
@@ -119,22 +118,16 @@ export const Veo3Node = memo(({ data, selected, id }: NodeProps) => {
         { id: 'output', label: 'Video', type: 'video' }
     ]) as any[];
 
-    const pollOperationStatus = async (operationName: string, apiKey: string): Promise<string> => {
+    const pollOperationStatus = async (operationName: string): Promise<string> => {
         const maxAttempts = 120; // 10 minutes with 5 second intervals
         let attempts = 0;
 
         while (attempts < maxAttempts) {
-            const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/${operationName}`,
-                {
-                    headers: {
-                        'x-goog-api-key': apiKey,
-                    },
-                }
-            );
+            const response = await fetch(`/api/providers/google/operations?name=${operationName}`);
 
             if (!response.ok) {
-                throw new Error(`Failed to check operation status: ${response.statusText}`);
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `Failed to check operation status: ${response.statusText}`);
             }
 
             const result = await response.json();
@@ -168,11 +161,6 @@ export const Veo3Node = memo(({ data, selected, id }: NodeProps) => {
             setIsRunning(true);
             setError('');
             setProgress('Initializing...');
-
-            const apiKey = getGoogleApiKey();
-            if (!apiKey) {
-                throw new Error('Google AI API key not configured. Please add it in the sidebar.');
-            }
 
             // Get FRESH data from connected nodes
             const { freshPrompt, freshImages, freshVideo } = getFreshConnectedData();
@@ -245,21 +233,17 @@ export const Veo3Node = memo(({ data, selected, id }: NodeProps) => {
             setProgress('Submitting request...');
 
             // Start video generation
-            const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/veo-3.1-generate-preview:predictLongRunning`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'x-goog-api-key': apiKey,
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(requestBody),
-                }
-            );
+            const response = await fetch('/api/providers/google/veo-3.1-generate-preview', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(requestBody),
+            });
 
             if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`API request failed: ${response.statusText} - ${errorText}`);
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `API request failed: ${response.statusText}`);
             }
 
             const result = await response.json();
@@ -272,19 +256,16 @@ export const Veo3Node = memo(({ data, selected, id }: NodeProps) => {
             setProgress('Generating video...');
 
             // Poll for completion
-            const videoUri = await pollOperationStatus(operationName, apiKey);
+            const videoUri = await pollOperationStatus(operationName);
 
             setProgress('Downloading video...');
 
-            // Download the video
-            const videoResponse = await fetch(videoUri, {
-                headers: {
-                    'x-goog-api-key': apiKey,
-                },
-            });
+            // Download the video via our proxy
+            const videoResponse = await fetch(`/api/providers/google/media/download?uri=${encodeURIComponent(videoUri)}`);
 
             if (!videoResponse.ok) {
-                throw new Error(`Failed to download video: ${videoResponse.statusText}`);
+                const errorData = await videoResponse.json().catch(() => ({}));
+                throw new Error(errorData.error || `Failed to download video: ${videoResponse.statusText}`);
             }
 
             const videoBlob = await videoResponse.blob();
