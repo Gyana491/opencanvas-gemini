@@ -49,8 +49,8 @@ export function ImportDialog({ isOpen, onClose }: ImportDialogProps) {
             // Save the imported workflow content
             await saveWorkflow(
                 newWorkflowId,
-                workflowData.nodes,
-                workflowData.edges,
+                workflowData.nodes as any,
+                workflowData.edges as any,
                 workflowData.viewport || { x: 0, y: 0, zoom: 1 }
             )
 
