@@ -22,12 +22,11 @@ import {
   FolderOpen as FolderIcon,
   Copy,
   Edit3,
-  ChevronRight,
   ChevronDown,
   Save,
-  Workflow,
   Download,
   Trash2,
+  Share2,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 
@@ -40,6 +39,7 @@ interface EditorSidebarProps {
   onDuplicate?: () => void
   onRename?: () => void
   onExport?: () => void
+  onShare?: () => void
   onImport?: () => void
   onDelete?: () => void
   onNew?: () => void
@@ -54,6 +54,7 @@ export function EditorSidebar({
   onDuplicate,
   onRename,
   onExport,
+  onShare,
   onImport,
   onDelete,
   onNew,
@@ -109,6 +110,10 @@ export function EditorSidebar({
             <DropdownMenuItem onClick={onExport}>
               <Download className="mr-2 h-4 w-4" />
               Export
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onShare}>
+              <Share2 className="mr-2 h-4 w-4" />
+              Share
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onDelete} className="text-destructive focus:text-destructive hover:text-destructive">

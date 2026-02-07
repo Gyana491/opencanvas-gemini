@@ -20,12 +20,13 @@ import {
   MarkerType,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Activity, Download } from 'lucide-react'
+import { Activity, Download, Share2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { toPng } from 'html-to-image'
 
 import { ExportDialog } from './export-dialog'
 import { ImportDialog } from './import-dialog'
+import { ShareDialog } from './share-dialog'
 
 import { Button } from "@/components/ui/button"
 import {
@@ -41,22 +42,8 @@ import { Label } from "@/components/ui/label"
 import { EditorSidebar } from './editor-sidebar'
 import { NodeLibrary } from './node-library'
 import { NodeProperties } from './node-properties'
-import { ImagenNode } from './nodes/models/imagen-node'
-import { TextInputNode } from './nodes/text-input-node'
-import { ImageUploadNode } from './nodes/image-upload-node'
-import { NanoBananaNode } from './nodes/models/nano-banana-node'
-import { NanoBananaProNode } from './nodes/models/nano-banana-pro-node'
-import { Veo3Node } from './nodes/models/veo-3-node'
+import { workflowNodeTypes } from './node-types'
 import { useWorkflow } from './hooks/use-workflow'
-
-const nodeTypes = {
-  imagen: ImagenNode,
-  textInput: TextInputNode,
-  imageUpload: ImageUploadNode,
-  nanoBanana: NanoBananaNode,
-  nanoBananaPro: NanoBananaProNode,
-  veo3: Veo3Node,
-}
 
 const NODES_WITH_PROPERTIES = [
   'imagen',
@@ -249,6 +236,7 @@ function WorkflowEditorInner() {
   const [isAnimated, setIsAnimated] = useState(true)
   const { screenToFlowPosition, setViewport, getViewport, getNodes, getEdges } = useReactFlow()
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false)
+  const [isShareDialogOpen, setIsShareDialogOpen] = useState(false)
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
   const [isEditingName, setIsEditingName] = useState(false)
   const [newName, setNewName] = useState("")
@@ -874,6 +862,7 @@ function WorkflowEditorInner() {
           setIsRenameDialogOpen(true)
         }}
         onExport={() => setIsExportDialogOpen(true)}
+        onShare={() => setIsShareDialogOpen(true)}
         onImport={() => setIsImportDialogOpen(true)}
         onDelete={handleDelete}
         onNew={handleNew}
@@ -918,6 +907,16 @@ function WorkflowEditorInner() {
               variant="outline"
               size="sm"
               className="shadow-sm bg-background/80 backdrop-blur-sm h-9 px-4"
+              onClick={() => setIsShareDialogOpen(true)}
+              disabled={!workflowId || workflowId === 'new'}
+            >
+              <Share2 className="mr-2 h-4 w-4" />
+              Share
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="shadow-sm bg-background/80 backdrop-blur-sm h-9 px-4"
               onClick={() => setIsExportDialogOpen(true)}
             >
               <Download className="mr-2 h-4 w-4" />
@@ -940,7 +939,7 @@ function WorkflowEditorInner() {
             onPaneClick={onPaneClick}
             onDrop={onDrop}
             onDragOver={onDragOver}
-            nodeTypes={nodeTypes}
+            nodeTypes={workflowNodeTypes}
             connectionLineStyle={{
               stroke: getEdgeColorFromSourceHandle(connectingSourceHandle),
               strokeWidth: 2,
@@ -999,6 +998,11 @@ function WorkflowEditorInner() {
         <ImportDialog
           isOpen={isImportDialogOpen}
           onClose={() => setIsImportDialogOpen(false)}
+        />
+        <ShareDialog
+          isOpen={isShareDialogOpen}
+          onClose={() => setIsShareDialogOpen(false)}
+          workflowId={workflowId}
         />
 
         {/* Rename Dialog */}
