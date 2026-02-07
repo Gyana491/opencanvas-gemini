@@ -47,6 +47,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { ImportDialog } from "@/components/workflow-editor/import-dialog"
 
 interface Workflow {
   id: string
@@ -66,6 +67,7 @@ export default function DashboardPage() {
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
   const [workflowToRename, setWorkflowToRename] = useState<Workflow | null>(null)
   const [newName, setNewName] = useState("")
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
 
   useEffect(() => {
     fetchWorkflows()
@@ -176,7 +178,7 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold tracking-tight">My Workflows</h2>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => toast.info("Import coming soon")}>
+          <Button variant="outline" onClick={() => setIsImportDialogOpen(true)}>
             <Package className="mr-2 h-4 w-4" /> Import
           </Button>
           <Button onClick={handleCreateNewFile}>
@@ -394,6 +396,14 @@ export default function DashboardPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ImportDialog 
+        isOpen={isImportDialogOpen} 
+        onClose={() => {
+          setIsImportDialogOpen(false)
+          fetchWorkflows() // Refresh workflow list after import
+        }} 
+      />
     </div>
   )
 }

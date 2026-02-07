@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import {
     Dialog,
     DialogContent,
@@ -9,9 +9,11 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { FileJson, Package } from "lucide-react"
+import { FileJson, Package, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { useReactFlow } from '@xyflow/react'
+import { exportWorkflowAsZip } from '@/lib/utils/export-workflow'
+import { Progress } from "@/components/ui/progress"
 
 interface ExportDialogProps {
     isOpen: boolean
@@ -22,6 +24,9 @@ interface ExportDialogProps {
 
 export function ExportDialog({ isOpen, onClose, workflowId, workflowName = 'workflow' }: ExportDialogProps) {
     const { getNodes, getEdges, getViewport } = useReactFlow()
+    const [isExporting, setIsExporting] = useState(false)
+    const [exportProgress, setExportProgress] = useState(0)
+    const [exportMessage, setExportMessage] = useState('')
 
     const handleExportJson = async () => {
         try {
@@ -53,7 +58,48 @@ export function ExportDialog({ isOpen, onClose, workflowId, workflowName = 'work
     }
 
     const handleExportZip = async () => {
-        toast.info("ZIP export coming soon with R2 integration!")
+        if (!workflowId) {
+            toast.error('Workflow ID is required')
+            return
+        }
+
+        setIsExporting(true)
+        setExportProgress(0)
+        setExportMessage('Starting export...')
+
+        try {
+            const nodes = getNodes()
+            const edges = getEdges()
+            const viewport = getViewport()
+
+            await exportWorkflowAsZip(
+                workflowId,
+                workflowName,
+                nodes,
+                edges,
+                viewport,
+                (progress, message) => {
+                    setExportProgress(progress)
+                    setExportMessage(message)
+                }
+            )
+
+            toast.success('Workflow exported successfully with all assets!')
+            
+            // Reset and close after a brief delay
+            setTimeout(() => {
+                setIsExporting(false)
+                setExportProgress(0)
+                setExportMessage('')
+                onClose()
+            }, 1000)
+        } catch (error) {
+            console.error('Failed to export ZIP:', error)
+            toast.error('Failed to export workflow')
+            setIsExporting(false)
+            setExportProgress(0)
+            setExportMessage('')
+        }
     }
 
     return (
@@ -68,24 +114,32 @@ export function ExportDialog({ isOpen, onClose, workflowId, workflowName = 'work
 
                 <div className="grid grid-cols-1 gap-4 py-4">
                     <Card
-                        className="cursor-pointer hover:bg-muted/50 transition-colors border-2 hover:border-primary/50 opacity-50"
+                        className={`cursor-pointer hover:bg-muted/50 transition-colors border-2 hover:border-primary/50 ${
+                            isExporting ? 'opacity-50 pointer-events-none' : ''
+                        }`}
                         onClick={handleExportZip}
                     >
                         <CardHeader className="flex flex-row items-center gap-4 space-y-0 pb-2">
                             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                                <Package className="h-6 w-6 text-primary" />
+                                {isExporting ? (
+                                    <Loader2 className="h-6 w-6 text-primary animate-spin" />
+                                ) : (
+                                    <Package className="h-6 w-6 text-primary" />
+                                )}
                             </div>
                             <div className="flex-1">
                                 <CardTitle className="text-base">Export with Assets (ZIP)</CardTitle>
                                 <CardDescription>
-                                    Coming soon!
+                                    Bundle workflow JSON with all media files
                                 </CardDescription>
                             </div>
                         </CardHeader>
                     </Card>
 
                     <Card
-                        className="cursor-pointer hover:bg-muted/50 transition-colors border-2 hover:border-primary/50"
+                        className={`cursor-pointer hover:bg-muted/50 transition-colors border-2 hover:border-primary/50 ${
+                            isExporting ? 'opacity-50 pointer-events-none' : ''
+                        }`}
                         onClick={handleExportJson}
                     >
                         <CardHeader className="flex flex-row items-center gap-4 space-y-0 pb-2">
@@ -102,8 +156,15 @@ export function ExportDialog({ isOpen, onClose, workflowId, workflowName = 'work
                     </Card>
                 </div>
 
+                {isExporting && (
+                    <div className="space-y-2 pb-4">
+                        <Progress value={exportProgress} className="h-2" />
+                        <p className="text-sm text-muted-foreground text-center">{exportMessage}</p>
+                    </div>
+                )}
+
                 <DialogFooter className="sm:justify-end">
-                    <Button variant="secondary" onClick={onClose}>
+                    <Button variant="secondary" onClick={onClose} disabled={isExporting}>
                         Cancel
                     </Button>
                 </DialogFooter>
