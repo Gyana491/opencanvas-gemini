@@ -2,7 +2,7 @@ import { betterAuth } from 'better-auth'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { emailOTP } from 'better-auth/plugins'
 import prisma from '@/lib/prisma'
-import { sendOTPEmail } from '@/lib/email/ses'
+import { sendOTPEmail, sendResetPasswordEmail } from '@/lib/email/ses'
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
@@ -10,7 +10,17 @@ export const auth = betterAuth({
   }),
   baseURL: process.env.NEXT_PUBLIC_BETTER_AUTH_URL,
   emailAndPassword: {
-    enabled: true
+    enabled: true,
+    sendResetPassword: async ({ user, url }) => {
+      // Don't await the email sending to prevent timing attacks
+      // On serverless platforms, use waitUntil if available
+      sendResetPasswordEmail({
+        to: user.email,
+        url,
+      }).catch((error) => {
+        console.error('Failed to send reset password email:', error)
+      })
+    },
   },
   socialProviders: {
     google: {

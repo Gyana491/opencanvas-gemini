@@ -1,9 +1,16 @@
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses'
 
-interface SendOTPEmailParams {
+interface SendEmailParams {
   to: string
-  otp: string
-  type: 'sign-in' | 'email-verification' | 'forget-password'
+  subject: string
+  html: string
+  text: string
+}
+
+interface EmailTemplateParams {
+  url?: string
+  otp?: string
+  type: 'sign-in' | 'email-verification' | 'forget-password' | 'reset-password-link'
 }
 
 // Lazy initialization of SES client to ensure env vars are loaded
@@ -51,7 +58,7 @@ function getSESClient(): SESClient {
   return sesClient
 }
 
-const getEmailTemplate = (otp: string, type: SendOTPEmailParams['type']) => {
+const getEmailTemplate = ({ url, otp, type }: EmailTemplateParams) => {
   const templates = {
     'sign-in': {
       subject: 'Your Sign-In Code',
@@ -182,7 +189,7 @@ const getEmailTemplate = (otp: string, type: SendOTPEmailParams['type']) => {
       text: `Your email verification OTP code is: ${otp}\n\nThis code will expire in 5 minutes.\n\nIf you didn't create an account, please ignore this email.`,
     },
     'forget-password': {
-      subject: 'Reset Your Password',
+      subject: 'Reset Your Password (OTP)',
       html: `
         <!DOCTYPE html>
         <html>
@@ -245,13 +252,75 @@ const getEmailTemplate = (otp: string, type: SendOTPEmailParams['type']) => {
       `,
       text: `Your password reset OTP code is: ${otp}\n\nThis code will expire in 5 minutes.\n\nIf you didn't request a password reset, please ignore this email.`,
     },
+    'reset-password-link': {
+      subject: 'Reset Your Password',
+      html: `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Password Reset</title>
+          </head>
+          <body style="margin: 0; padding: 0; background-color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #ffffff;">
+              <tr>
+                <td align="center" style="padding: 40px 20px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 500px;">
+                    <!-- Header -->
+                    <tr>
+                      <td style="padding: 0 0 32px 0;">
+                        <h1 style="margin: 0; font-size: 24px; font-weight: 600; color: #000000; letter-spacing: -0.5px;">OpenCanvas</h1>
+                      </td>
+                    </tr>
+                    <!-- Content -->
+                    <tr>
+                      <td style="padding: 0 0 24px 0;">
+                        <h2 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 500; color: #000000; letter-spacing: -0.3px;">Reset your password</h2>
+                        <p style="margin: 0; font-size: 15px; line-height: 24px; color: #666666;">We received a request to reset your password. Click the button below to continue:</p>
+                      </td>
+                    </tr>
+                    <!-- Action Button -->
+                    <tr>
+                      <td align="center" style="padding: 0 0 32px 0;">
+                        <a href="${url}" style="display: inline-block; background-color: #000000; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 12px 24px; border-radius: 6px; letter-spacing: -0.3px;">Reset Password</a>
+                      </td>
+                    </tr>
+                    <!-- Footer Info -->
+                    <tr>
+                      <td style="padding: 0 0 40px 0;">
+                         <p style="margin: 0 0 8px 0; font-size: 13px; line-height: 20px; color: #999999;">If the button doesn't work, copy and paste this link into your browser:</p>
+                         <p style="margin: 0 0 24px 0; font-size: 13px; line-height: 20px; color: #0066cc; word-break: break-all;">${url}</p>
+                        <p style="margin: 0; font-size: 13px; line-height: 20px; color: #999999;">If you didn't request this, please ignore this email.</p>
+                      </td>
+                    </tr>
+                    <!-- Divider -->
+                    <tr>
+                      <td style="padding: 0 0 24px 0;">
+                        <div style="height: 1px; background-color: #e5e5e5;"></div>
+                      </td>
+                    </tr>
+                    <!-- Footer -->
+                    <tr>
+                      <td style="padding: 0;">
+                        <p style="margin: 0; font-size: 12px; color: #999999;">© ${new Date().getFullYear()} OpenCanvas. All rights reserved.</p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </body>
+        </html>
+      `,
+      text: `Reset your password by clicking this link: ${url}\n\nIf you didn't request a password reset, please ignore this email.`,
+    },
   }
 
   return templates[type]
 }
 
-export async function sendOTPEmail({ to, otp, type }: SendOTPEmailParams) {
-  const template = getEmailTemplate(otp, type)
+export async function sendEmail({ to, subject, html, text }: SendEmailParams) {
   const fromEmail = process.env.AWS_SES_FROM_EMAIL
 
   if (!fromEmail) {
@@ -267,16 +336,16 @@ export async function sendOTPEmail({ to, otp, type }: SendOTPEmailParams) {
     },
     Message: {
       Subject: {
-        Data: template.subject,
+        Data: subject,
         Charset: 'UTF-8',
       },
       Body: {
         Html: {
-          Data: template.html,
+          Data: html,
           Charset: 'UTF-8',
         },
         Text: {
-          Data: template.text,
+          Data: text,
           Charset: 'UTF-8',
         },
       },
@@ -285,10 +354,37 @@ export async function sendOTPEmail({ to, otp, type }: SendOTPEmailParams) {
 
   try {
     const response = await client.send(command)
-    console.log('OTP email sent successfully:', response.MessageId)
+    console.log('Email sent successfully:', response.MessageId)
     return { success: true, messageId: response.MessageId }
   } catch (error) {
-    console.error('Error sending OTP email:', error)
+    console.error('Error sending email:', error)
     throw error
   }
+}
+
+// Kept for backward compatibility if needed, but updated to use sendEmail
+export interface SendOTPEmailParams {
+  to: string
+  otp: string
+  type: 'sign-in' | 'email-verification' | 'forget-password'
+}
+
+export async function sendOTPEmail({ to, otp, type }: SendOTPEmailParams) {
+  const template = getEmailTemplate({ otp, type })
+  return sendEmail({
+    to,
+    subject: template.subject,
+    html: template.html,
+    text: template.text
+  })
+}
+
+export async function sendResetPasswordEmail({ to, url }: { to: string, url: string }) {
+  const template = getEmailTemplate({ url, type: 'reset-password-link' })
+  return sendEmail({
+    to,
+    subject: template.subject,
+    html: template.html,
+    text: template.text
+  })
 }
