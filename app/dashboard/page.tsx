@@ -16,7 +16,8 @@ import {
   Copy,
   Pencil,
   Loader2,
-  Package
+  Package,
+  Download
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -48,6 +49,7 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { ImportDialog } from "@/components/workflow-editor/import-dialog"
+import { DashboardExportDialog } from "@/components/workflow-editor/dashboard-export-dialog"
 
 interface Workflow {
   id: string
@@ -68,6 +70,8 @@ export default function DashboardPage() {
   const [workflowToRename, setWorkflowToRename] = useState<Workflow | null>(null)
   const [newName, setNewName] = useState("")
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false)
+  const [workflowToExport, setWorkflowToExport] = useState<Workflow | null>(null)
 
   useEffect(() => {
     fetchWorkflows()
@@ -147,6 +151,11 @@ export default function DashboardPage() {
     setWorkflowToRename(workflow)
     setNewName(workflow.name)
     setIsRenameDialogOpen(true)
+  }
+
+  const openExportDialog = (workflow: Workflow) => {
+    setWorkflowToExport(workflow)
+    setIsExportDialogOpen(true)
   }
 
   const handleRenameSubmit = async () => {
@@ -273,6 +282,9 @@ export default function DashboardPage() {
                           <DropdownMenuItem onClick={() => handleDuplicateWorkflow(workflow.id)}>
                             <Copy className="mr-2 h-4 w-4" /> Duplicate
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openExportDialog(workflow)}>
+                            <Download className="mr-2 h-4 w-4" /> Export
+                          </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive"
@@ -346,6 +358,9 @@ export default function DashboardPage() {
                           <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleDuplicateWorkflow(workflow.id) }}>
                             <Copy className="mr-2 h-4 w-4" /> Duplicate
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openExportDialog(workflow) }}>
+                            <Download className="mr-2 h-4 w-4" /> Export
+                          </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive"
@@ -404,6 +419,18 @@ export default function DashboardPage() {
           fetchWorkflows() // Refresh workflow list after import
         }} 
       />
+
+      {workflowToExport && (
+        <DashboardExportDialog
+          isOpen={isExportDialogOpen}
+          onClose={() => {
+            setIsExportDialogOpen(false)
+            setWorkflowToExport(null)
+          }}
+          workflowId={workflowToExport.id}
+          workflowName={workflowToExport.name}
+        />
+      )}
     </div>
   )
 }
