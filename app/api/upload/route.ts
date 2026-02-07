@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
 
         const buffer = Buffer.from(await file.arrayBuffer());
         const ext = file.name.split(".").pop();
-        const key = `workflows/${workflowId}/${nodeId || "global"}/${nanoid()}.${ext}`;
+        const key = `workflows/${workflowId}/assets/${nodeId || "global"}_${nanoid()}.${ext}`;
 
         const url = await uploadFile(buffer, key, file.type);
 
