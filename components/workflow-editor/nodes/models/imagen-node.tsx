@@ -2,7 +2,7 @@
 
 import { memo, useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
-import { Handle, Position, NodeProps } from '@xyflow/react'
+import { Handle, Position, NodeProps, useReactFlow, useEdges } from '@xyflow/react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -21,6 +21,8 @@ export const ImagenNode = memo(({ data, selected, id }: NodeProps) => {
     const params = useParams()
     const workflowId = params?.id as string
     const [isRunning, setIsRunning] = useState(false);
+    const { getNodes } = useReactFlow();
+    const edges = useEdges();
 
     const getInitialImage = () => {
         return (data?.output as string) || (data?.imageUrl as string) || ''
@@ -47,14 +49,41 @@ export const ImagenNode = memo(({ data, selected, id }: NodeProps) => {
         { id: 'image', label: 'Image', type: 'image' }
     ]) as any[];
 
+    const getFreshConnectedPrompt = () => {
+        const nodes = getNodes();
+        const incomingEdges = edges.filter(edge => edge.target === id);
+
+        let freshPrompt = '';
+
+        incomingEdges.forEach(edge => {
+            if (edge.targetHandle !== 'prompt') return;
+
+            const sourceNode = nodes.find(n => n.id === edge.source);
+            if (!sourceNode) return;
+
+            if (sourceNode.type === 'textInput') {
+                freshPrompt = (sourceNode.data?.text as string) || '';
+                return;
+            }
+
+            if (typeof sourceNode.data?.output === 'string') {
+                freshPrompt = sourceNode.data.output;
+            }
+        });
+
+        return freshPrompt;
+    };
+
     const handleGenerate = async () => {
         try {
             setIsRunning(true);
             setError('');
+            const freshPrompt = getFreshConnectedPrompt();
+            const finalPrompt = freshPrompt || prompt;
 
             // Validating inputs
             inputSchema.parse({
-                prompt,
+                prompt: finalPrompt,
                 aspectRatio: aspectRatio as any
             });
 
@@ -65,7 +94,7 @@ export const ImagenNode = memo(({ data, selected, id }: NodeProps) => {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    prompt,
+                    prompt: finalPrompt,
                     aspectRatio,
                     workflowId,
                     nodeId: id
