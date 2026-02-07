@@ -171,7 +171,7 @@ export default function LoginOTPPage() {
             </CardDescription>
           </CardHeader>
           <form onSubmit={handleVerifyOTP}>
-            <CardContent>
+            <CardContent className="justify-center">
               <Field>
                 <div className="flex items-center justify-between">
                   <FieldLabel htmlFor="otp-verification">
@@ -188,28 +188,30 @@ export default function LoginOTPPage() {
                     {countdown > 0 ? `Resend (${countdown}s)` : "Resend Code"}
                   </Button>
                 </div>
-                <InputOTP
-                  maxLength={6}
-                  id="otp-verification"
-                  value={otp}
-                  onChange={setOtp}
-                  required
-                  disabled={loading}
-                >
-                  <InputOTPGroup className="*:data-[slot=input-otp-slot]:h-12 *:data-[slot=input-otp-slot]:w-11 *:data-[slot=input-otp-slot]:text-xl">
-                    <InputOTPSlot index={0} />
-                    <InputOTPSlot index={1} />
-                    <InputOTPSlot index={2} />
-                  </InputOTPGroup>
-                  <InputOTPSeparator className="mx-2" />
-                  <InputOTPGroup className="*:data-[slot=input-otp-slot]:h-12 *:data-[slot=input-otp-slot]:w-11 *:data-[slot=input-otp-slot]:text-xl">
-                    <InputOTPSlot index={3} />
-                    <InputOTPSlot index={4} />
-                    <InputOTPSlot index={5} />
-                  </InputOTPGroup>
-                </InputOTP>
-                <FieldDescription>
-                  The code expires in 5 minutes. Having issues?{" "}
+                <div className="flex justify-center my-6">
+                  <InputOTP
+                    maxLength={6}
+                    id="otp-verification"
+                    value={otp}
+                    onChange={setOtp}
+                    required
+                    disabled={loading}
+                  >
+                    <InputOTPGroup className="*:data-[slot=input-otp-slot]:h-12 *:data-[slot=input-otp-slot]:w-11 *:data-[slot=input-otp-slot]:text-xl">
+                      <InputOTPSlot index={0} />
+                      <InputOTPSlot index={1} />
+                      <InputOTPSlot index={2} />
+                    </InputOTPGroup>
+                    <InputOTPSeparator className="mx-2" />
+                    <InputOTPGroup className="*:data-[slot=input-otp-slot]:h-12 *:data-[slot=input-otp-slot]:w-11 *:data-[slot=input-otp-slot]:text-xl">
+                      <InputOTPSlot index={3} />
+                      <InputOTPSlot index={4} />
+                      <InputOTPSlot index={5} />
+                    </InputOTPGroup>
+                  </InputOTP>
+                </div>
+                <FieldDescription className="my-4 text-center">
+                  The code expires in 5 minutes. Having issues?<br/> {" "}
                   <a
                     href="#"
                     className="underline"
