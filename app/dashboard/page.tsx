@@ -18,7 +18,8 @@ import {
   Pencil,
   Loader2,
   Package,
-  Download
+  Download,
+  Share2
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -51,6 +52,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { ImportDialog } from "@/components/workflow-editor/import-dialog"
 import { ExportDialog } from "@/components/workflow-editor/export-dialog"
+import { ShareDialog } from "@/components/workflow-editor/share-dialog"
 
 interface Workflow {
   id: string
@@ -74,6 +76,8 @@ export default function DashboardPage() {
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false)
   const [workflowToExport, setWorkflowToExport] = useState<Workflow | null>(null)
+  const [isShareDialogOpen, setIsShareDialogOpen] = useState(false)
+  const [workflowToShare, setWorkflowToShare] = useState<Workflow | null>(null)
 
   useEffect(() => {
     // Only fetch workflows if authenticated
@@ -161,6 +165,11 @@ export default function DashboardPage() {
   const openExportDialog = (workflow: Workflow) => {
     setWorkflowToExport(workflow)
     setIsExportDialogOpen(true)
+  }
+
+  const openShareDialog = (workflow: Workflow) => {
+    setWorkflowToShare(workflow)
+    setIsShareDialogOpen(true)
   }
 
   const getWorkflowDataForExport = async () => {
@@ -301,6 +310,9 @@ export default function DashboardPage() {
                           <DropdownMenuItem onClick={() => handleDuplicateWorkflow(workflow.id)}>
                             <Copy className="mr-2 h-4 w-4" /> Duplicate
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openShareDialog(workflow)}>
+                            <Share2 className="mr-2 h-4 w-4" /> Share
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => openExportDialog(workflow)}>
                             <Download className="mr-2 h-4 w-4" /> Export
                           </DropdownMenuItem>
@@ -377,6 +389,9 @@ export default function DashboardPage() {
                           <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleDuplicateWorkflow(workflow.id) }}>
                             <Copy className="mr-2 h-4 w-4" /> Duplicate
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openShareDialog(workflow) }}>
+                            <Share2 className="mr-2 h-4 w-4" /> Share
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openExportDialog(workflow) }}>
                             <Download className="mr-2 h-4 w-4" /> Export
                           </DropdownMenuItem>
@@ -449,6 +464,17 @@ export default function DashboardPage() {
           workflowId={workflowToExport.id}
           workflowName={workflowToExport.name}
           getWorkflowData={getWorkflowDataForExport}
+        />
+      )}
+
+      {workflowToShare && (
+        <ShareDialog
+          isOpen={isShareDialogOpen}
+          onClose={() => {
+            setIsShareDialogOpen(false)
+            setWorkflowToShare(null)
+          }}
+          workflowId={workflowToShare.id}
         />
       )}
     </div>

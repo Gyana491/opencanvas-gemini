@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
-import { Check, Copy, Link as LinkIcon } from "lucide-react"
+import { Check, Copy, Link as LinkIcon, Loader2 } from "lucide-react"
 
 import {
   Dialog,
@@ -165,6 +165,12 @@ export function ShareDialog({ isOpen, onClose, workflowId }: ShareDialogProps) {
 
         <div className="space-y-4 py-2">
           <p className="text-xs text-muted-foreground">{accessDescription}</p>
+          {isLoadingStatus && (
+            <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Loading share settings...
+            </div>
+          )}
           {isShared && !shareUrl && !isLoadingStatus && (
             <p className="text-xs text-amber-600 dark:text-amber-400">
               This workflow is currently shared.
@@ -204,7 +210,7 @@ export function ShareDialog({ isOpen, onClose, workflowId }: ShareDialogProps) {
               disabled={isCreating || isDisabled || isLoadingStatus || isRevoking}
             >
               <LinkIcon className="mr-2 h-4 w-4" />
-              {isCreating ? "Creating..." : "Create Link"}
+              {isLoadingStatus ? "Loading..." : isCreating ? "Creating..." : "Create Link"}
             </Button>
           )}
         </DialogFooter>
