@@ -12,14 +12,14 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     sendResetPassword: async ({ user, url }) => {
-      // Don't await the email sending to prevent timing attacks
-      // On serverless platforms, use waitUntil if available
-      sendResetPasswordEmail({
-        to: user.email,
-        url,
-      }).catch((error) => {
+      try {
+        await sendResetPasswordEmail({
+          to: user.email,
+          url,
+        })
+      } catch (error) {
         console.error('Failed to send reset password email:', error)
-      })
+      }
     },
   },
   socialProviders: {
@@ -32,15 +32,15 @@ export const auth = betterAuth({
   plugins: [
     emailOTP({
       async sendVerificationOTP({ email, otp, type }) {
-        // Don't await the email sending to prevent timing attacks
-        // On serverless platforms, use waitUntil if available
-        sendOTPEmail({
-          to: email,
-          otp,
-          type,
-        }).catch((error) => {
+        try {
+          await sendOTPEmail({
+            to: email,
+            otp,
+            type,
+          })
+        } catch (error) {
           console.error('Failed to send OTP email:', error)
-        })
+        }
       },
       otpLength: 6,
       expiresIn: 300, // 5 minutes
