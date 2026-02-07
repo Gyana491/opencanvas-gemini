@@ -1,6 +1,8 @@
 import { betterAuth } from 'better-auth'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
+import { emailOTP } from 'better-auth/plugins'
 import prisma from '@/lib/prisma'
+import { sendOTPEmail } from '@/lib/email/ses'
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
@@ -16,5 +18,26 @@ export const auth = betterAuth({
       clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
     },
   },
-  trustedOrigins: ['http://localhost:3000', 'https://opencanvas.gyana.dev', 'https://opencanvas-gemini.vercel.app']
+  trustedOrigins: ['http://localhost:3000', 'https://opencanvas.gyana.dev', 'https://opencanvas-gemini.vercel.app'],
+  plugins: [
+    emailOTP({
+      async sendVerificationOTP({ email, otp, type }) {
+        // Don't await the email sending to prevent timing attacks
+        // On serverless platforms, use waitUntil if available
+        sendOTPEmail({
+          to: email,
+          otp,
+          type,
+        }).catch((error) => {
+          console.error('Failed to send OTP email:', error)
+        })
+      },
+      otpLength: 6,
+      expiresIn: 300, // 5 minutes
+      sendVerificationOnSignUp: false,
+      disableSignUp: false,
+      allowedAttempts: 3,
+      storeOTP: 'hashed', // Store hashed OTP for security
+    }),
+  ],
 })

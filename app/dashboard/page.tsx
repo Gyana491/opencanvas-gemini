@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import { useSession } from "@/lib/auth-client"
 import { formatDistanceToNow } from "date-fns"
 import { toast } from "sonner"
 import {
@@ -61,6 +62,7 @@ interface Workflow {
 
 export default function DashboardPage() {
   const router = useRouter()
+  const { data: session, isPending } = useSession()
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
@@ -74,8 +76,11 @@ export default function DashboardPage() {
   const [workflowToExport, setWorkflowToExport] = useState<Workflow | null>(null)
 
   useEffect(() => {
-    fetchWorkflows()
-  }, [])
+    // Only fetch workflows if authenticated
+    if (session && !isPending) {
+      fetchWorkflows()
+    }
+  }, [session, isPending])
 
   const fetchWorkflows = async () => {
     try {

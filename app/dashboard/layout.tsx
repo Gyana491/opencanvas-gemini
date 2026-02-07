@@ -1,6 +1,9 @@
 "use client"
 
-import { usePathname } from "next/navigation"
+import { useEffect } from "react"
+import { usePathname, useRouter } from "next/navigation"
+import { useSession } from "@/lib/auth-client"
+import { Loader2 } from "lucide-react"
 
 import { AppSidebar } from "@/components/app-sidebar"
 import {
@@ -24,6 +27,31 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const pathname = usePathname()
+  const router = useRouter()
+  const { data: session, isPending } = useSession()
+
+  useEffect(() => {
+    if (!isPending && !session) {
+      router.push("/login")
+    }
+  }, [session, isPending, router])
+
+  // Show loading state while checking authentication
+  if (isPending) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Don't render anything if not authenticated
+  if (!session) {
+    return null
+  }
 
   // The workflow editor has its own UI (custom sidebars + canvas).
   // In Next.js nested layouts, a child layout can't remove a parent layout,
