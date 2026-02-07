@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
+import Image from "next/image"
 import { useParams, useRouter } from "next/navigation"
 import {
   ReactFlow,
@@ -178,10 +180,27 @@ function SharedWorkflowInner() {
 
   return (
     <div className="flex h-screen flex-col bg-background">
-      <div className="flex items-center justify-between border-b px-4 py-3">
-        <div>
-          <p className="text-sm font-semibold">{workflowName}</p>
-          <p className="text-xs text-muted-foreground">{bannerText}</p>
+      <div className="flex items-center justify-between border-b px-4 py-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="flex items-center gap-4">
+          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+            <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+              <Image
+                src="/logo.png"
+                alt="OpenCanvas Logo"
+                width={32}
+                height={32}
+                className="object-contain"
+              />
+            </div>
+            <div className="grid flex-1 text-left text-sm leading-tight">
+              <span className="truncate font-semibold">OpenCanvas</span>
+            </div>
+          </Link>
+          <div className="h-6 w-px bg-border" />
+          <div>
+            <p className="text-sm font-semibold">{workflowName}</p>
+            <p className="text-xs text-muted-foreground">{bannerText}</p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Button onClick={handleDuplicate} disabled={isDuplicating}>
