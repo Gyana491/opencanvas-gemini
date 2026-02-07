@@ -8,27 +8,56 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { 
-  Search, 
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import {
+  Search,
   Layers,
   ArrowLeft,
   FileText,
   FolderOpen as FolderIcon,
   Copy,
   Edit3,
-  Share2,
-  Settings,
   ChevronRight,
+  ChevronDown,
+  Save,
+  Workflow,
+  Download,
+  Trash2,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
+
 
 interface EditorSidebarProps {
   onSearchClick?: () => void
   onLayersClick?: () => void
+  onSave?: () => void
+  onBackToDashboard?: () => void
+  onDuplicate?: () => void
+  onRename?: () => void
+  onExport?: () => void
+  onImport?: () => void
+  onDelete?: () => void
+  onNew?: () => void
   isLibraryOpen?: boolean
 }
 
-export function EditorSidebar({ onSearchClick, onLayersClick, isLibraryOpen }: EditorSidebarProps) {
+export function EditorSidebar({
+  onSearchClick,
+  onLayersClick,
+  onSave,
+  onBackToDashboard,
+  onDuplicate,
+  onRename,
+  onExport,
+  onImport,
+  onDelete,
+  onNew,
+  isLibraryOpen
+}: EditorSidebarProps) {
   const router = useRouter()
 
   return (
@@ -37,49 +66,47 @@ export function EditorSidebar({ onSearchClick, onLayersClick, isLibraryOpen }: E
       <div className="flex h-14 items-center justify-center border-b">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-9 w-9">
-              <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
-                <div className="grid grid-cols-2 gap-0.5">
-                  <div className="h-1.5 w-1.5 bg-current" />
-                  <div className="h-1.5 w-1.5 bg-current" />
-                  <div className="h-1.5 w-1.5 bg-current" />
-                  <div className="h-1.5 w-1.5 bg-current" />
-                </div>
-              </div>
+            <Button variant="ghost" size="icon" className="h-10 w-10 gap-1 data-[state=open]:bg-accent px-0">
+              <Workflow className="size-5" />
+              <ChevronDown className="size-3 text-muted-foreground" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56">
-            <DropdownMenuItem onClick={() => router.push('/dashboard')}>
+            <DropdownMenuItem onClick={onBackToDashboard || (() => router.push('/dashboard'))}>
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to Dashboard
             </DropdownMenuItem>
-            <DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onSave}>
+              <Save className="mr-2 h-4 w-4" />
+              Save
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onNew}>
               <FileText className="mr-2 h-4 w-4" />
               New File
             </DropdownMenuItem>
-            <DropdownMenuItem>
-              <FolderIcon className="mr-2 h-4 w-4 shrink-0" />
-              <span>Open Recent</span>
-              <ChevronRight className="ml-auto h-4 w-4" />
+            <DropdownMenuItem onClick={onImport}>
+              <FolderIcon className="mr-2 h-4 w-4" />
+              Import
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={onDuplicate}>
               <Copy className="mr-2 h-4 w-4" />
               Duplicate
             </DropdownMenuItem>
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={onRename}>
               <Edit3 className="mr-2 h-4 w-4" />
               Rename
             </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Share2 className="mr-2 h-4 w-4" />
-              Share
+            <DropdownMenuItem onClick={onExport}>
+              <Download className="mr-2 h-4 w-4" />
+              Export
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <Settings className="mr-2 h-4 w-4 shrink-0" />
-              <span>Preferences</span>
-              <ChevronRight className="ml-auto h-4 w-4" />
+            <DropdownMenuItem onClick={onDelete} className="text-destructive focus:text-destructive hover:text-destructive">
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -87,22 +114,47 @@ export function EditorSidebar({ onSearchClick, onLayersClick, isLibraryOpen }: E
 
       {/* Only Search and Layers icons */}
       <div className="flex flex-col items-center gap-1 py-3">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9"
-          onClick={onSearchClick}
-        >
-          <Search className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className={`h-9 w-9 ${isLibraryOpen ? 'bg-accent text-accent-foreground' : ''}`}
-          onClick={onLayersClick}
-        >
-          <Layers className="h-4 w-4" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9"
+              onClick={onSearchClick}
+            >
+              <Search className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">Search Nodes</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`h-9 w-9 ${isLibraryOpen ? 'bg-accent text-accent-foreground' : ''}`}
+              onClick={onLayersClick}
+            >
+              <Layers className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">Node Library</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9"
+              onClick={onSave}
+            >
+              <Save className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">Save (Cmd+S)</TooltipContent>
+        </Tooltip>
       </div>
     </div>
   )

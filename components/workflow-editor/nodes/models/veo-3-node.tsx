@@ -1,6 +1,7 @@
 "use client"
 
 import { memo, useState, useEffect } from 'react'
+import { useParams } from 'next/navigation'
 import { Handle, Position, NodeProps, useUpdateNodeInternals, useReactFlow, useEdges } from '@xyflow/react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -9,6 +10,9 @@ import { Video, Loader2, AlertCircle, Download } from 'lucide-react'
 import { z } from 'zod'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { VideoModelNode } from './video-model-node'
+import { resolveImageInput } from '@/lib/utils/image-processing'
+import { downloadMedia } from '@/lib/utils/download'
+import { uploadToR2 } from '@/lib/utils/upload'
 
 const inputSchema = z.object({
     prompt: z.string().min(1, 'Prompt is required'),
@@ -21,8 +25,15 @@ const inputSchema = z.object({
 });
 
 export const Veo3Node = memo(({ data, selected, id }: NodeProps) => {
+    const params = useParams()
+    const workflowId = params?.id as string
     const [isRunning, setIsRunning] = useState(false);
-    const [output, setOutput] = useState<string>('');
+
+    const getInitialVideo = () => {
+        return (data?.output as string) || ''
+    }
+
+    const [output, setOutput] = useState<string>(getInitialVideo());
     const [error, setError] = useState<string>('');
     const [progress, setProgress] = useState<string>('');
 
@@ -92,6 +103,13 @@ export const Veo3Node = memo(({ data, selected, id }: NodeProps) => {
         updateNodeInternals(id);
     }, [imageInputCount, id, updateNodeInternals]);
 
+    // Update video URL when data changes (e.g. on load)
+    useEffect(() => {
+        if (!isRunning) {
+            setOutput(getInitialVideo())
+        }
+    }, [data?.output])
+
     const handleAddInput = () => {
         if (data?.onUpdateNodeData) {
             const newCount = imageInputCount + 1;
@@ -123,29 +141,38 @@ export const Veo3Node = memo(({ data, selected, id }: NodeProps) => {
         let attempts = 0;
 
         while (attempts < maxAttempts) {
-            const response = await fetch(`/api/providers/google/operations?name=${operationName}`);
+            // Call server-side status endpoint
+            const response = await fetch(
+                `/api/providers/google/veo-3.1-generate-preview/status?name=${encodeURIComponent(operationName)}&workflowId=${encodeURIComponent(workflowId)}&nodeId=${encodeURIComponent(id)}`,
+                {
+                    method: 'GET',
+                }
+            );
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || `Failed to check operation status: ${response.statusText}`);
+                // If status check fails, we might want to retry or throw
+                // For now, let's throw but we could implement retry logic for network blips
+                throw new Error(`Failed to check status: ${response.statusText}`);
             }
 
             const result = await response.json();
 
-            if (result.done) {
+            if (result.state === 'done') {
                 if (result.error) {
-                    throw new Error(result.error.message || 'Video generation failed');
+                    throw new Error(result.error || 'Video generation failed');
                 }
 
-                const videoUri = result.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri;
-                if (!videoUri) {
-                    throw new Error('No video URI in response');
+                if (!result.url) {
+                    throw new Error('Completed but no video URL returned');
                 }
 
-                return videoUri;
+                return result.url;
+            } else if (result.state === 'error') {
+                throw new Error(result.error || 'Video generation failed');
             }
 
             // Update progress
+            // result.state === 'processing'
             setProgress(`Processing... (${attempts * 5}s elapsed)`);
 
             // Wait 5 seconds before next poll
@@ -161,6 +188,8 @@ export const Veo3Node = memo(({ data, selected, id }: NodeProps) => {
             setIsRunning(true);
             setError('');
             setProgress('Initializing...');
+
+            // No client-side AP key check needed
 
             // Get FRESH data from connected nodes
             const { freshPrompt, freshImages, freshVideo } = getFreshConnectedData();
@@ -184,21 +213,22 @@ export const Veo3Node = memo(({ data, selected, id }: NodeProps) => {
                 }],
                 parameters: {
                     aspectRatio: aspectRatio,
-                    resolution: resolution,
-                    durationSeconds: parseInt(durationSeconds)
+                    // resolution, durationSeconds handled by API if supported, or default
                 }
             };
 
             // Add first frame image if connected
             if (freshImages['image']) {
-                const match = freshImages['image'].match(/^data:(image\/[a-z]+);base64,/);
-                const mimeType = match ? match[1] : 'image/png';
-                const base64Data = freshImages['image'].includes(',') ? freshImages['image'].split(',')[1] : freshImages['image'];
-
-                requestBody.instances[0].image = {
-                    bytesBase64Encoded: base64Data,
-                    mimeType: mimeType
-                };
+                try {
+                    const { mimeType, base64Data } = await resolveImageInput(freshImages['image']);
+                    requestBody.instances[0].image = {
+                        bytesBase64Encoded: base64Data,
+                        mimeType: mimeType
+                    };
+                } catch (e) {
+                    console.error('Failed to resolve first frame image', e);
+                    throw new Error('Failed to load first frame image. Please check the input.');
+                }
             }
 
             // Add reference images if connected (up to 3)
@@ -206,15 +236,16 @@ export const Veo3Node = memo(({ data, selected, id }: NodeProps) => {
             for (let i = 0; i < imageInputCount; i++) {
                 const connectedImage = freshImages[`ref_image_${i}`];
                 if (connectedImage) {
-                    const match = connectedImage.match(/^data:(image\/[a-z]+);base64,/);
-                    const mimeType = match ? match[1] : 'image/png';
-                    const base64Data = connectedImage.includes(',') ? connectedImage.split(',')[1] : connectedImage;
-
-                    referenceImages.push({
-                        bytesBase64Encoded: base64Data,
-                        mimeType: mimeType,
-                        referenceType: "asset"
-                    });
+                    try {
+                        const { mimeType, base64Data } = await resolveImageInput(connectedImage);
+                        referenceImages.push({
+                            bytesBase64Encoded: base64Data,
+                            mimeType: mimeType,
+                            referenceType: "asset"
+                        });
+                    } catch (e) {
+                        console.error(`Failed to resolve ref image ${i}`, e);
+                    }
                 }
             }
 
@@ -222,17 +253,9 @@ export const Veo3Node = memo(({ data, selected, id }: NodeProps) => {
                 requestBody.parameters.referenceImages = referenceImages;
             }
 
-            // Add video for extension if connected
-            if (freshVideo) {
-                // Convert blob URL to base64 if needed
-                // For now, we'll need to handle this separately
-                // Video extension requires the video from a previous generation
-                console.warn('Video extension not fully implemented - requires special handling');
-            }
-
             setProgress('Submitting request...');
 
-            // Start video generation
+            // Start video generation via Server-Side API
             const response = await fetch('/api/providers/google/veo-3.1-generate-preview', {
                 method: 'POST',
                 headers: {
@@ -242,7 +265,7 @@ export const Veo3Node = memo(({ data, selected, id }: NodeProps) => {
             });
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
+                const errorData = await response.json();
                 throw new Error(errorData.error || `API request failed: ${response.statusText}`);
             }
 
@@ -255,28 +278,21 @@ export const Veo3Node = memo(({ data, selected, id }: NodeProps) => {
 
             setProgress('Generating video...');
 
-            // Poll for completion
-            const videoUri = await pollOperationStatus(operationName);
+            // Poll for completion (using server-side status endpoint)
+            const videoUrl = await pollOperationStatus(operationName);
 
-            setProgress('Downloading video...');
-
-            // Download the video via our proxy
-            const videoResponse = await fetch(`/api/providers/google/media/download?uri=${encodeURIComponent(videoUri)}`);
-
-            if (!videoResponse.ok) {
-                const errorData = await videoResponse.json().catch(() => ({}));
-                throw new Error(errorData.error || `Failed to download video: ${videoResponse.statusText}`);
-            }
-
-            const videoBlob = await videoResponse.blob();
-            const videoUrl = URL.createObjectURL(videoBlob);
-
+            setProgress('Finalizing...');
             setOutput(videoUrl);
-            setProgress('');
 
             if (data?.onUpdateNodeData && typeof data.onUpdateNodeData === 'function') {
-                (data.onUpdateNodeData as (id: string, data: any) => void)(id, { output: videoUrl });
+                (data.onUpdateNodeData as (id: string, data: any) => void)(id, {
+                    output: videoUrl,
+                    assetPath: videoUrl,
+                });
             }
+
+            setProgress('');
+
         } catch (err) {
             if (err instanceof z.ZodError) {
                 setError(err.issues[0].message);
@@ -290,18 +306,14 @@ export const Veo3Node = memo(({ data, selected, id }: NodeProps) => {
     };
 
     const handleDownload = () => {
-        if (!output) return;
-        const link = document.createElement('a');
-        link.href = output;
-        link.download = `veo-3.1-${Date.now()}.mp4`;
-        link.click();
+        downloadMedia(output, `veo-${Date.now()}.mp4`);
     };
 
     return (
         <VideoModelNode
             id={id}
             selected={selected}
-            title="Veo 3.1"
+            title="Veo"
             icon={Video}
             iconClassName="bg-gradient-to-br from-violet-500 to-indigo-500"
             isRunning={isRunning}

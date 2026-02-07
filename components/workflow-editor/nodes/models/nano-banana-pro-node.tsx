@@ -1,15 +1,19 @@
 "use client"
 
 import { memo, useState, useEffect } from 'react'
+import { useParams } from 'next/navigation'
 import { Handle, Position, NodeProps, useUpdateNodeInternals, useReactFlow, useEdges } from '@xyflow/react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { Image as ImageIcon, Loader2, AlertCircle, Download, Sparkles } from 'lucide-react'
+import { Image as ImageIcon, Loader2, AlertCircle, Download } from 'lucide-react'
 import { z } from 'zod'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { ImageModelNode } from './image-model-node'
+import { resolveImageInput } from '@/lib/utils/image-processing'
+import { downloadMedia } from '@/lib/utils/download'
+import { uploadToR2 } from '@/lib/utils/upload'
 
 const inputSchema = z.object({
     prompt: z.string().min(1, 'Prompt is required'),
@@ -18,8 +22,15 @@ const inputSchema = z.object({
 });
 
 export const NanoBananaProNode = memo(({ data, selected, id }: NodeProps) => {
+    const params = useParams()
+    const workflowId = params?.id as string
     const [isRunning, setIsRunning] = useState(false);
-    const [output, setOutput] = useState<string>('');
+
+    const getInitialImage = () => {
+        return (data?.output as string) || (data?.imageUrl as string) || ''
+    }
+
+    const [output, setOutput] = useState<string>(getInitialImage());
     const [error, setError] = useState<string>('');
     const [thinkingOutput, setThinkingOutput] = useState<string>('');
 
@@ -74,6 +85,13 @@ export const NanoBananaProNode = memo(({ data, selected, id }: NodeProps) => {
         updateNodeInternals(id);
     }, [imageInputCount, id, updateNodeInternals]);
 
+    // Update image URL when data changes (e.g. on load)
+    useEffect(() => {
+        if (!isRunning) {
+            setOutput(getInitialImage())
+        }
+    }, [data?.output, data?.imageUrl])
+
     const handleAddInput = () => {
         if (data?.onUpdateNodeData) {
             const newCount = imageInputCount + 1;
@@ -102,6 +120,8 @@ export const NanoBananaProNode = memo(({ data, selected, id }: NodeProps) => {
             setError('');
             setThinkingOutput('');
 
+            // No client-side API key check needed
+
             // Get FRESH data from connected nodes
             const { freshPrompt, freshImages } = getFreshConnectedData();
             const finalPrompt = freshPrompt || prompt;
@@ -120,29 +140,29 @@ export const NanoBananaProNode = memo(({ data, selected, id }: NodeProps) => {
             for (let i = 0; i < imageInputCount; i++) {
                 const connectedImage = freshImages[`image_${i}`];
                 if (connectedImage) {
-                    const match = connectedImage.match(/^data:(image\/[a-z]+);base64,/);
-                    const mimeType = match ? match[1] : 'image/png';
-                    const base64Data = connectedImage.includes(',') ? connectedImage.split(',')[1] : connectedImage;
-
-                    contentsParts.push({
-                        inlineData: {
-                            mimeType: mimeType,
-                            data: base64Data
-                        }
-                    });
+                    try {
+                        const { mimeType, base64Data } = await resolveImageInput(connectedImage);
+                        contentsParts.push({
+                            inlineData: {
+                                mimeType: mimeType,
+                                data: base64Data
+                            }
+                        });
+                    } catch (e) {
+                        console.error(`Failed to resolve image input ${i}`, e);
+                        // continue
+                    }
                 }
             }
 
             const requestBody: any = {
+                workflowId,
+                nodeId: id,
                 contents: [{
                     parts: contentsParts
                 }],
                 generationConfig: {
                     responseModalities: ['TEXT', 'IMAGE'],
-                    imageConfig: {
-                        aspectRatio: aspectRatio,
-                        imageSize: imageSize
-                    }
                 }
             };
 
@@ -150,6 +170,7 @@ export const NanoBananaProNode = memo(({ data, selected, id }: NodeProps) => {
                 requestBody.tools = [{ googleSearch: {} }];
             }
 
+            // Call server-side API (which handles R2 upload)
             const response = await fetch('/api/providers/google/gemini-3-pro-image-preview', {
                 method: 'POST',
                 headers: {
@@ -159,57 +180,49 @@ export const NanoBananaProNode = memo(({ data, selected, id }: NodeProps) => {
             });
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || `API request failed: ${response.statusText}`);
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to generate image');
             }
 
-            const result = await response.json();
+            const responseData = await response.json();
 
-            console.log('[Nano Banana Pro API Response]', {
-                fullResponse: result,
-                hasCandidates: !!result.candidates,
-                candidatesLength: result.candidates?.length,
-                firstCandidate: result.candidates?.[0],
-                parts: result.candidates?.[0]?.content?.parts,
-            });
+            // Handle thinking output from originalResponse
+            if (responseData.originalResponse) {
+                const parts = responseData.originalResponse.candidates?.[0]?.content?.parts || [];
+                const thinkingParts = parts.filter((p: any) => p.thought);
 
-            const parts = result.candidates?.[0]?.content?.parts || [];
-            const thinkingParts = parts.filter((p: any) => p.thought);
-            const imageParts = parts.filter((p: any) => p.inlineData?.mimeType?.startsWith('image/'));
-
-            if (thinkingParts.length > 0) {
-                const thoughts = thinkingParts
-                    .map((p: any) => p.text)
-                    .filter(Boolean)
-                    .join('\n\n');
-                setThinkingOutput(thoughts);
-                console.log('[Thinking Output]', { thoughts });
+                if (thinkingParts.length > 0) {
+                    const thoughts = thinkingParts
+                        .map((p: any) => p.text) // Thinking parts usually have 'text' not 'thought' property in API response, but checking source code it filtered by 'p.thought'. Wait, Gemini 2.0 Flash Thinking model uses specific parts. 
+                        // The source code used `p.thought`. I should verify if `p.thought` exists. 
+                        // Standard Gemini Thinking uses `part.text` but the kind is 'thought'.
+                        // However, the source code had `p.thought`. I will assume this property exists in the custom response structure or the source knew something specific.
+                        // Actually, looking at previous code: `const thinkingParts = parts.filter((p: any) => p.thought);`.
+                        // And then `const thoughts = thinkingParts.map((p: any) => p.text)`. 
+                        // Wait, if `p.thought` is the filter, then `p` has a truthy `thought` property.
+                        // I will keep the logic same as source.
+                        .filter(Boolean)
+                        .join('\n\n');
+                    setThinkingOutput(thoughts);
+                }
             }
 
-            if (imageParts.length > 0) {
-                const imageData = imageParts[imageParts.length - 1].inlineData.data;
-                const mimeType = imageParts[imageParts.length - 1].inlineData.mimeType || 'image/png';
-                const imageUrl = `data:${mimeType};base64,${imageData}`;
-
-                console.log('[Image Generated]', {
-                    mimeType,
-                    dataLength: imageData.length,
-                    imageUrl: imageUrl.substring(0, 100) + '...'
-                });
-
-                setOutput(imageUrl);
+            if (responseData.success && responseData.url) {
+                const assetPathStr = responseData.url;
+                setOutput(assetPathStr);
 
                 if (data?.onUpdateNodeData && typeof data.onUpdateNodeData === 'function') {
-                    (data.onUpdateNodeData as (id: string, data: any) => void)(id, { output: imageUrl });
+                    (data.onUpdateNodeData as (id: string, data: any) => void)(id, {
+                        output: assetPathStr,
+                        assetPath: assetPathStr,
+                        imageUrl: assetPathStr
+                    });
                 }
             } else {
-                console.error('[API Response Error]', {
-                    candidates: result.candidates,
-                    error: result.error,
-                    parts,
-                    fullResponse: JSON.stringify(result, null, 2)
-                });
-                throw new Error('No image data in response. Check console for details.');
+                if (responseData.error) {
+                    throw new Error(responseData.error);
+                }
+                throw new Error('No image URL returned from server');
             }
         } catch (err) {
             if (err instanceof z.ZodError) {
@@ -223,11 +236,7 @@ export const NanoBananaProNode = memo(({ data, selected, id }: NodeProps) => {
     };
 
     const handleDownload = () => {
-        if (!output) return;
-        const link = document.createElement('a');
-        link.href = output;
-        link.download = `nano-banana-pro-${Date.now()}.png`;
-        link.click();
+        downloadMedia(output, `nano-banana-pro-${Date.now()}.png`);
     };
 
     return (

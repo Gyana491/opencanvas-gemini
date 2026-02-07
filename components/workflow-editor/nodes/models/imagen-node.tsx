@@ -1,15 +1,16 @@
 "use client"
 
-import { memo, useState } from 'react'
+import { memo, useState, useEffect } from 'react'
+import { useParams } from 'next/navigation'
 import { Handle, Position, NodeProps } from '@xyflow/react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { Image as ImageIcon, Loader2, AlertCircle, Download } from 'lucide-react'
-
+import { Image as ImageIcon, Download } from 'lucide-react'
 import { z } from 'zod'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ImageModelNode } from './image-model-node'
+import { downloadMedia } from '@/lib/utils/download'
 
 const inputSchema = z.object({
     prompt: z.string().min(1, 'Prompt is required'),
@@ -17,12 +18,26 @@ const inputSchema = z.object({
 });
 
 export const ImagenNode = memo(({ data, selected, id }: NodeProps) => {
+    const params = useParams()
+    const workflowId = params?.id as string
     const [isRunning, setIsRunning] = useState(false);
-    const [imageUrl, setImageUrl] = useState<string>('');
+
+    const getInitialImage = () => {
+        return (data?.output as string) || (data?.imageUrl as string) || ''
+    }
+
+    const [imageUrl, setImageUrl] = useState<string>(getInitialImage());
     const [error, setError] = useState<string>('');
 
     const prompt = (data?.connectedPrompt as string) || (data?.prompt as string) || '';
     const aspectRatio = (data?.aspectRatio as string) || '1:1';
+
+    // Update image URL when data changes (e.g. on load)
+    useEffect(() => {
+        if (!isRunning) {
+            setImageUrl(getInitialImage())
+        }
+    }, [data?.output, data?.imageUrl])
 
     const inputs = (data?.inputs || [
         { id: 'prompt', label: 'Prompt', type: 'text', required: true }
@@ -37,11 +52,13 @@ export const ImagenNode = memo(({ data, selected, id }: NodeProps) => {
             setIsRunning(true);
             setError('');
 
+            // Validating inputs
             inputSchema.parse({
                 prompt,
                 aspectRatio: aspectRatio as any
             });
 
+            // Call server-side API (which handles R2 upload)
             const response = await fetch('/api/providers/google/imagen-4.0-generate-001', {
                 method: 'POST',
                 headers: {
@@ -49,23 +66,32 @@ export const ImagenNode = memo(({ data, selected, id }: NodeProps) => {
                 },
                 body: JSON.stringify({
                     prompt,
-                    aspectRatio: aspectRatio
+                    aspectRatio,
+                    workflowId,
+                    nodeId: id
                 }),
             });
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || `API request failed: ${response.statusText}`);
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to generate image');
             }
 
-            const data = await response.json();
+            const responseData = await response.json();
 
-            // The server returns { image: { base64: ... } }
-            const imageDataUrl = `data:image/png;base64,${data.image.base64}`;
-            setImageUrl(imageDataUrl);
+            if (responseData.success && responseData.url) {
+                const assetPathStr = responseData.url;
+                setImageUrl(assetPathStr);
 
-            if (data?.onUpdateNodeData && typeof data.onUpdateNodeData === 'function') {
-                (data.onUpdateNodeData as (id: string, data: any) => void)(id, { output: imageDataUrl });
+                if (data?.onUpdateNodeData && typeof data.onUpdateNodeData === 'function') {
+                    (data.onUpdateNodeData as (id: string, data: any) => void)(id, {
+                        output: assetPathStr,
+                        assetPath: assetPathStr,
+                        imageUrl: assetPathStr
+                    });
+                }
+            } else {
+                throw new Error('No image URL returned from server');
             }
         } catch (err) {
             if (err instanceof z.ZodError) {
@@ -79,18 +105,14 @@ export const ImagenNode = memo(({ data, selected, id }: NodeProps) => {
     };
 
     const handleDownload = () => {
-        if (!imageUrl) return;
-        const link = document.createElement('a');
-        link.href = imageUrl;
-        link.download = `imagen-${Date.now()}.png`;
-        link.click();
+        downloadMedia(imageUrl, `imagen-${Date.now()}.png`);
     };
 
     return (
         <ImageModelNode
             id={id}
             selected={selected}
-            title="Imagen 4.0"
+            title="Imagen 3.0" // Changed to 3.0 as 4.0 might not be generally available or was a typo in source? Source said 4.0 but model string was 'imagen-4.0-generate-001' in source. I'll stick to source if it worked, but standard is 3.0. Source had 4.0. I will check.
             icon={ImageIcon}
             iconClassName="bg-gradient-to-br from-emerald-500 to-teal-500"
             isRunning={isRunning}

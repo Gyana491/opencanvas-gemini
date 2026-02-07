@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { experimental_generateImage as generateImage } from 'ai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { uploadFile } from '@/lib/r2';
+import { nanoid } from 'nanoid';
 
 export async function POST(req: NextRequest) {
     try {
@@ -13,7 +15,7 @@ export async function POST(req: NextRequest) {
         }
 
         const body = await req.json();
-        const { prompt, aspectRatio } = body;
+        const { prompt, aspectRatio, workflowId, nodeId } = body;
 
         if (!prompt) {
             return NextResponse.json(
@@ -30,11 +32,22 @@ export async function POST(req: NextRequest) {
             aspectRatio: aspectRatio,
         });
 
-        // The AI SDK returns a base64 string for the image
+        // Convert base64 to buffer
+        const buffer = Buffer.from(image.base64, 'base64');
+        const fileName = `imagen_${Date.now()}_${nanoid()}.png`;
+
+        // Define storage key
+        // If workflowId is not provided (e.g. playground), store in temporary/global
+        const storageKey = workflowId
+            ? `workflows/${workflowId}/${nodeId || 'generated'}/${fileName}`
+            : `temp/${nanoid()}/${fileName}`;
+
+        // Upload to R2
+        const url = await uploadFile(buffer, storageKey, 'image/png');
+
         return NextResponse.json({
-            image: {
-                base64: image.base64
-            }
+            url: url,
+            success: true
         });
 
     } catch (error: any) {

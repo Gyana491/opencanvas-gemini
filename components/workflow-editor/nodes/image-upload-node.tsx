@@ -1,12 +1,16 @@
 "use client"
 
-import { memo, useRef, useState } from 'react'
+import { memo, useRef, useState, useEffect } from 'react'
+import { useParams } from 'next/navigation'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Image as ImageIcon, Upload, MoreVertical, X } from 'lucide-react'
+import { Image as ImageIcon, Upload, MoreVertical, X, Loader2 } from 'lucide-react'
+import { uploadToR2 } from '@/lib/utils/upload'
 
 export const ImageUploadNode = memo(({ data, selected, id }: NodeProps) => {
+  const params = useParams()
+  const workflowId = params?.id as string
   const outputs = (data?.outputs || []) as Array<{
     id: string
     label: string
@@ -33,24 +37,47 @@ export const ImageUploadNode = memo(({ data, selected, id }: NodeProps) => {
       ? 'text-emerald-300'
       : 'text-sky-300'
 
-  const [preview, setPreview] = useState<string>((data?.imageUrl as string) || '')
+  // If assetPath exists, use it (it should be a full URL in Gemini version), otherwise imageUrl
+  const getInitialPreview = () => {
+    return (data?.imageUrl as string) || ''
+  }
+
+  const [preview, setPreview] = useState<string>(getInitialPreview())
+  const [isUploading, setIsUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Update preview if data changes externally
+  useEffect(() => {
+    setPreview(getInitialPreview())
+  }, [data?.imageUrl])
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        const result = reader.result as string
-        setPreview(result)
-        if (data?.onUpdateNodeData && typeof data.onUpdateNodeData === 'function') {
-          (data.onUpdateNodeData as (id: string, data: any) => void)(id, {
-            imageUrl: result,
-            fileName: file.name
-          })
+    if (file && workflowId) {
+      setIsUploading(true)
+      try {
+        // Upload to R2
+        const response = await uploadToR2(file, workflowId, id, file.name)
+
+        if (response.success && response.url) {
+          const imageUrl = response.url
+          setPreview(imageUrl)
+
+          if (data?.onUpdateNodeData && typeof data.onUpdateNodeData === 'function') {
+            (data.onUpdateNodeData as (id: string, data: any) => void)(id, {
+              assetPath: imageUrl, // Storing full URL as assetPath for consistency in this version
+              fileName: file.name,
+              imageUrl: imageUrl
+            })
+          }
+        } else {
+          console.error("Failed to upload asset:", response.error)
         }
+      } catch (error) {
+        console.error("Error uploading asset:", error)
+      } finally {
+        setIsUploading(false)
       }
-      reader.readAsDataURL(file)
     }
   }
 
@@ -59,6 +86,7 @@ export const ImageUploadNode = memo(({ data, selected, id }: NodeProps) => {
     if (data?.onUpdateNodeData && typeof data.onUpdateNodeData === 'function') {
       (data.onUpdateNodeData as (id: string, data: any) => void)(id, {
         imageUrl: '',
+        assetPath: '',
         fileName: ''
       })
     }
@@ -88,7 +116,11 @@ export const ImageUploadNode = memo(({ data, selected, id }: NodeProps) => {
 
         {/* Content */}
         <div className="space-y-2">
-          {preview ? (
+          {isUploading ? (
+            <div className="h-32 flex items-center justify-center border-2 border-dashed border-border rounded-md">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : preview ? (
             <div className="relative group">
               <img
                 src={preview}

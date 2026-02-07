@@ -1,6 +1,7 @@
 "use client"
 
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useState, useEffect, useRef } from 'react'
+import { useParams, useRouter } from 'next/navigation'
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -19,8 +20,24 @@ import {
   MarkerType,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Activity } from 'lucide-react'
+import { Activity, Download } from 'lucide-react'
+import { toast } from 'sonner'
+import { toPng } from 'html-to-image'
 
+import { ExportDialog } from './export-dialog'
+import { ImportDialog } from './import-dialog'
+
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { EditorSidebar } from './editor-sidebar'
 import { NodeLibrary } from './node-library'
 import { NodeProperties } from './node-properties'
@@ -30,6 +47,7 @@ import { ImageUploadNode } from './nodes/image-upload-node'
 import { NanoBananaNode } from './nodes/models/nano-banana-node'
 import { NanoBananaProNode } from './nodes/models/nano-banana-pro-node'
 import { Veo3Node } from './nodes/models/veo-3-node'
+import { useWorkflow } from './hooks/use-workflow'
 
 const nodeTypes = {
   imagen: ImagenNode,
@@ -208,6 +226,7 @@ function getNodeHandles(nodeType: string | undefined, data?: any): NodeHandleMet
             id: OUTPUT_HANDLE_IDS.video,
             label: 'Video',
             type: 'video',
+            allowedSourceIds: [OUTPUT_HANDLE_IDS.video],
           },
         ],
       }
@@ -217,6 +236,10 @@ function getNodeHandles(nodeType: string | undefined, data?: any): NodeHandleMet
 }
 
 function WorkflowEditorInner() {
+  const params = useParams()
+  const router = useRouter()
+  const workflowId = params.id as string
+
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<WorkflowNodeData>>(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
   const [selectedNode, setSelectedNode] = useState<any>(null)
@@ -224,7 +247,206 @@ function WorkflowEditorInner() {
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false)
   const [connectingSourceHandle, setConnectingSourceHandle] = useState<string | null>(null)
   const [isAnimated, setIsAnimated] = useState(true)
-  const { screenToFlowPosition } = useReactFlow()
+  const { screenToFlowPosition, setViewport, getViewport } = useReactFlow()
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false)
+  const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
+  const [isEditingName, setIsEditingName] = useState(false)
+  const [newName, setNewName] = useState("")
+  const [workflowName, setWorkflowName] = useState("")
+
+  const { createWorkflow, loadWorkflow, saveWorkflow, renameWorkflow, deleteWorkflow, duplicateWorkflow, isLoading } = useWorkflow()
+
+  // Auto-save timer ref
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const AUTO_SAVE_DELAY = 2000 // 2 seconds
+
+  // Track if workflow creation is in progress to prevent duplicates
+  const creationInProgressRef = useRef(false)
+
+  // Load workflow on mount
+  useEffect(() => {
+    async function loadWorkflowData() {
+      if (!workflowId) return
+
+      try {
+        if (workflowId === 'new') {
+          // Prevent duplicate creation (React.StrictMode causes double effect)
+          if (creationInProgressRef.current) {
+            console.log('[Workflow Editor] Creation already in progress, skipping...')
+            return
+          }
+
+          creationInProgressRef.current = true
+
+          // Create new workflow
+          const response = await createWorkflow()
+          if (response.success && response.data) {
+            console.log('[Workflow Editor] Created new workflow:', response.data.id)
+            router.push(`/editor/${response.data.id}`)
+            toast.success('New file created successfully')
+          } else {
+            console.error('[Workflow Editor] Failed to create workflow:', response.error)
+          }
+        } else {
+          // Load existing workflow
+          const response = await loadWorkflow(workflowId)
+          if (response.success && response.data) {
+            // Check if data field is string or object (Postgres JSON type comes as object usually, but check)
+            // The API response.data is the workflow object.
+            // workflow.data contains { nodes, edges, viewport }
+            const workflow = response.data
+            const { nodes: loadedNodes, edges: loadedEdges, viewport } = workflow.data as any
+
+            console.log('[Workflow Editor] Loaded workflow:', workflowId, {
+              nodes: loadedNodes?.length,
+              edges: loadedEdges?.length,
+            })
+
+            setWorkflowName(workflow.name)
+            setNodes((loadedNodes || []) as Node<WorkflowNodeData>[])
+            setEdges(loadedEdges || [])
+            if (viewport) {
+              setViewport(viewport, { duration: 0 })
+            }
+          } else {
+            console.error('[Workflow Editor] Failed to load workflow:', response.error)
+            // If workflow doesn't exist, redirect to home
+            if (response.error === 'Workflow not found') {
+              router.push('/')
+            }
+          }
+        }
+      } catch (error) {
+        console.error('[Workflow Editor] Error loading workflow:', error)
+      } finally {
+        creationInProgressRef.current = false
+      }
+    }
+
+    loadWorkflowData()
+  }, [workflowId, router, createWorkflow, loadWorkflow, setEdges, setNodes, setViewport])
+
+
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
+  const reactFlowWrapper = useRef<HTMLDivElement>(null)
+  const lastThumbnailTimeRef = useRef<number>(0)
+
+  // Helper to sanitize nodes for saving (remove functions)
+  const getSerializableGraph = useCallback((nodes: Node[], edges: Edge[]) => {
+    const serializableNodes = nodes.map(node => {
+      const { data, ...rest } = node
+      // Create a clean data object without functions
+      const cleanData = Object.entries(data).reduce((acc, [key, value]) => {
+        if (typeof value !== 'function') {
+          acc[key] = value
+        }
+        return acc
+      }, {} as Record<string, any>)
+
+      return {
+        ...rest,
+        data: cleanData
+      }
+    })
+
+    return { nodes: serializableNodes, edges }
+  }, [])
+
+  const generateThumbnail = useCallback(async () => {
+    if (!reactFlowWrapper.current || !workflowId || workflowId === 'new') return
+
+    try {
+      // Small delay to ensure render is complete
+      await new Promise(resolve => setTimeout(resolve, 100))
+
+      const dataUrl = await toPng(reactFlowWrapper.current, {
+        backgroundColor: '#fff', // or existing background
+        width: 1280,
+        height: 720,
+        style: {
+          width: '1280px',
+          height: '720px',
+          transform: 'scale(1)', // Ensure no scaling issues
+        },
+        useCORS: true,
+        skipAutoScale: true,
+        filter: (node: HTMLElement) => {
+          // Exclude controls and minimap if captured
+          if (node.classList && (node.classList.contains('react-flow__controls') || node.classList.contains('react-flow__minimap') || node.classList.contains('react-flow__panel'))) {
+            return false
+          }
+          return true
+        }
+      } as any)
+
+      // Convert dataUrl to blob
+      const res = await fetch(dataUrl)
+      const blob = await res.blob()
+      const file = new File([blob], "thumbnail.png", { type: "image/png" })
+
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const uploadRes = await fetch(`/api/workflows/${workflowId}/thumbnail`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (uploadRes.ok) {
+        console.log('[Workflow Editor] Thumbnail updated')
+        lastThumbnailTimeRef.current = Date.now()
+      } else {
+        console.error('[Workflow Editor] Failed to update thumbnail')
+      }
+    } catch (error) {
+      console.error('[Workflow Editor] Thumbnail generation error:', error instanceof Error ? error.message : error)
+    }
+  }, [workflowId])
+
+  // Auto-save workflow when nodes, edges, or viewport changes
+  useEffect(() => {
+    if (isLoading || !workflowId || workflowId === 'new') {
+      return
+    }
+
+    // Clear existing timer
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current)
+    }
+
+    // Set new auto-save timer
+    autoSaveTimerRef.current = setTimeout(async () => {
+      try {
+        const viewport = getViewport()
+        const { nodes: safeNodes, edges: safeEdges } = getSerializableGraph(nodes, edges)
+
+        console.log('[Workflow Editor] Auto-saving workflow:', workflowId)
+
+        const response = await saveWorkflow(workflowId, safeNodes, safeEdges, viewport)
+        if (response.success) {
+          console.log('[Workflow Editor] Auto-saved workflow:', workflowId)
+
+          // Check if we should update thumbnail (every 60 seconds)
+          if (Date.now() - lastThumbnailTimeRef.current > 60000) {
+            generateThumbnail()
+          }
+
+        } else {
+          console.error('[Workflow Editor] Auto-save failed:', response.error)
+        }
+      } catch (error) {
+        console.error('[Workflow Editor] Auto-save error:', error)
+      }
+    }, AUTO_SAVE_DELAY)
+
+    // Cleanup on unmount
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current)
+      }
+    }
+  }, [nodes, edges, workflowId, isLoading, getViewport, getSerializableGraph, saveWorkflow, generateThumbnail])
+
 
   const toggleAnimation = useCallback(() => {
     setIsAnimated((prev) => !prev)
@@ -267,39 +489,15 @@ function WorkflowEditorInner() {
 
           const targetHandle = edge.targetHandle
 
-          console.log('[Data Propagation]', {
-            nodeId: node.id,
-            nodeType: node.type,
-            targetHandle,
-            sourceNodeType: sourceNode.type,
-            sourceNodeData: sourceNode.data,
-            edgeId: edge.id
-          });
-
           // Map source data to target connected fields
           if (targetHandle === 'prompt') {
             if (sourceNode.type === 'textInput') {
               connectedData.connectedPrompt = sourceNode.data.text || ''
-              console.log('[Prompt Data]', {
-                sourceType: 'textInput',
-                textValue: sourceNode.data.text,
-                connectedPrompt: connectedData.connectedPrompt
-              });
             } else if (sourceNode.data.output) {
               connectedData.connectedPrompt = sourceNode.data.output
-              console.log('[Prompt Data]', {
-                sourceType: 'output',
-                outputValue: sourceNode.data.output,
-                connectedPrompt: connectedData.connectedPrompt
-              });
             }
           } else if (targetHandle === 'image' || targetHandle?.startsWith('image_')) {
             const dataKey = targetHandle === 'image' ? 'connectedImage' : `connectedImage_${targetHandle.split('_')[1]}`
-            console.log('[Image Handle]', {
-              targetHandle,
-              dataKey,
-              hasData: !!sourceNode.data.imageUrl || !!sourceNode.data.output
-            });
 
             if (sourceNode.type === 'imageUpload') {
               connectedData[dataKey] = sourceNode.data.imageUrl || ''
@@ -311,13 +509,6 @@ function WorkflowEditorInner() {
             }
           }
         })
-
-        console.log('[Final Connected Data]', {
-          nodeId: node.id,
-          nodeType: node.type,
-          connectedData,
-          hasPrompt: !!connectedData.connectedPrompt
-        });
 
         // Only update if there are connected data changes
         if (incomingEdges.length > 0) {
@@ -541,58 +732,238 @@ function WorkflowEditorInner() {
     setNodes((nds) => [...nds, newNode])
   }, [setNodes, updateNodeData])
 
+  const handleManualSave = useCallback(async () => {
+    if (!workflowId) return
+
+    try {
+      const viewport = getViewport()
+      const { nodes: safeNodes, edges: safeEdges } = getSerializableGraph(nodes, edges)
+
+      const response = await saveWorkflow(workflowId, safeNodes, safeEdges, viewport)
+      if (response.success) {
+        toast.success('Workflow saved successfully')
+        console.log('[Workflow Editor] Manually saved workflow:', workflowId)
+      } else {
+        toast.error(`Failed to save workflow: ${response.error}`)
+      }
+    } catch (error) {
+      console.error('[Workflow Editor] Manual save error:', error)
+      toast.error('An error occurred while saving')
+    }
+  }, [workflowId, getViewport, getSerializableGraph, nodes, edges, saveWorkflow])
+
+  const handleBackToDashboard = useCallback(async () => {
+    // Auto-save before navigating back
+    if (workflowId) {
+      try {
+        const viewport = getViewport()
+        const { nodes: safeNodes, edges: safeEdges } = getSerializableGraph(nodes, edges)
+
+        await saveWorkflow(workflowId, safeNodes, safeEdges, viewport)
+        console.log('[Workflow Editor] Auto-saved before navigation')
+      } catch (error) {
+        console.error('[Workflow Editor] Auto-save before navigation failed:', error)
+      }
+    }
+    router.push('/dashboard')
+  }, [workflowId, getViewport, getSerializableGraph, nodes, edges, saveWorkflow, router])
+
+  const handleDuplicate = async () => {
+    if (!workflowId) return
+    try {
+      const response = await duplicateWorkflow(workflowId)
+      if (response.success && response.data) {
+        toast.success('Workflow duplicated')
+        router.push(`/editor/${response.data.id}`)
+      } else {
+        toast.error('Failed to duplicate workflow')
+      }
+    } catch (err) {
+      toast.error('Error duplicating workflow')
+    }
+  }
+
+  const handleRenameSubmit = async () => {
+    if (!workflowId || !newName.trim()) return
+    try {
+      const response = await renameWorkflow(workflowId, newName)
+      if (response.success) {
+        toast.success("Workflow renamed successfully")
+        setWorkflowName(newName)
+        setIsRenameDialogOpen(false)
+      } else {
+        toast.error('Failed to rename workflow')
+      }
+    } catch (error) {
+      toast.error('Failed to rename workflow')
+    }
+  }
+
+  const handleTitleSave = async (customName?: string) => {
+    if (!workflowId) return
+
+    // Use custom name (from sidebar) or current state (from canvas input)
+    const nameToUse = customName !== undefined ? customName : workflowName
+    const nameToSave = nameToUse.trim() || "Untitled Workflow"
+
+    try {
+      const response = await renameWorkflow(workflowId, nameToSave)
+      if (response.success) {
+        setIsEditingName(false)
+        setWorkflowName(nameToSave)
+        toast.success("Workflow renamed")
+      } else {
+        toast.error('Failed to rename workflow')
+      }
+    } catch (error) {
+      toast.error('Failed to rename workflow')
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!workflowId) return
+    if (!confirm('Are you sure you want to delete this workflow? This cannot be undone.')) return
+    try {
+      const response = await deleteWorkflow(workflowId)
+      if (response.success) {
+        toast.success('Workflow deleted')
+        router.push('/dashboard')
+      } else {
+        toast.error('Failed to delete workflow')
+      }
+    } catch (error) {
+      toast.error('Failed to delete workflow')
+    }
+  }
+
+  const handleNew = useCallback(async () => {
+    // Auto-save before creating new
+    if (workflowId && nodes.length > 0) {
+      try {
+        const viewport = getViewport()
+        const { nodes: safeNodes, edges: safeEdges } = getSerializableGraph(nodes, edges)
+
+        await saveWorkflow(workflowId, safeNodes, safeEdges, viewport)
+        console.log('[Workflow Editor] Auto-saved before creating new project')
+      } catch (error) {
+        console.error('[Workflow Editor] Auto-save before new project failed:', error)
+        toast.error('Failed to save current workflow')
+      }
+    }
+    router.push('/editor/new')
+  }, [workflowId, getViewport, getSerializableGraph, nodes, edges, saveWorkflow, router])
+
   return (
     <div className="flex h-screen w-full bg-background">
       {/* Minimal left sidebar with logo, search, layers - always visible */}
       <EditorSidebar
         onSearchClick={() => setIsLibraryOpen(true)}
         onLayersClick={() => setIsLibraryOpen(!isLibraryOpen)}
+        onSave={handleManualSave}
+        onBackToDashboard={handleBackToDashboard}
+        onDuplicate={handleDuplicate}
+        onRename={() => {
+          setNewName(workflowName)
+          setIsRenameDialogOpen(true)
+        }}
+        onExport={() => setIsExportDialogOpen(true)}
+        onImport={() => setIsImportDialogOpen(true)}
+        onDelete={handleDelete}
+        onNew={handleNew}
         isLibraryOpen={isLibraryOpen}
       />
 
       {/* Full width canvas area */}
       <div className="flex-1 relative">
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          isValidConnection={isValidConnection}
-          onConnectStart={onConnectStart}
-          onConnectEnd={onConnectEnd}
-          onNodeClick={onNodeClick}
-          onPaneClick={onPaneClick}
-          onDrop={onDrop}
-          onDragOver={onDragOver}
-          nodeTypes={nodeTypes}
-          connectionLineStyle={{
-            stroke: getEdgeColorFromSourceHandle(connectingSourceHandle),
-            strokeWidth: 2,
-          }}
-          fitView
-          className="bg-background"
-          proOptions={{ hideAttribution: true }}
-        >
-          <Background />
-          <Controls position="bottom-center">
-            <ControlButton
-              onClick={toggleAnimation}
-              title={isAnimated ? "Disable Animated Edges" : "Enable Animated Edges"}
-              className={isAnimated ? "!bg-blue-500 !border-blue-500 hover:!bg-blue-600" : ""}
+        {/* Top Left Title Bar - Hidden when library is open */}
+        {!isLibraryOpen && (
+          <div className="absolute top-4 left-4 z-50">
+            <div className="bg-background/80 backdrop-blur-sm border shadow-sm rounded-md px-4 h-9 flex items-center min-w-[200px]">
+              {isEditingName ? (
+                <Input
+                  value={workflowName}
+                  onChange={(e) => setWorkflowName(e.target.value)}
+                  onBlur={() => handleTitleSave()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleTitleSave()
+                    }
+                  }}
+                  className="h-7 px-2 border-none focus-visible:ring-0 bg-transparent text-foreground font-medium"
+                  autoFocus
+                />
+              ) : (
+                <span
+                  onClick={() => setIsEditingName(true)}
+                  className="font-medium cursor-text w-full truncate text-foreground hover:text-foreground/80 transition-colors"
+                >
+                  {workflowName || "Untitled Workflow"}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Top Right Action Bar - Hidden when properties sidebar is open */}
+        {!isRightSidebarOpen && (
+          <div className="absolute top-4 right-4 z-50 flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="shadow-sm bg-background/80 backdrop-blur-sm h-9 px-4"
+              onClick={() => setIsExportDialogOpen(true)}
             >
-              <Activity
-                className={`h-4 w-4 ${isAnimated ? 'text-white' : 'text-gray-500'}`}
-              />
-            </ControlButton>
-          </Controls>
-        </ReactFlow>
+              <Download className="mr-2 h-4 w-4" />
+              Export
+            </Button>
+          </div>
+        )}
+
+        <div className="w-full h-full" ref={reactFlowWrapper}>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            isValidConnection={isValidConnection}
+            onConnectStart={onConnectStart}
+            onConnectEnd={onConnectEnd}
+            onNodeClick={onNodeClick}
+            onPaneClick={onPaneClick}
+            onDrop={onDrop}
+            onDragOver={onDragOver}
+            nodeTypes={nodeTypes}
+            connectionLineStyle={{
+              stroke: getEdgeColorFromSourceHandle(connectingSourceHandle),
+              strokeWidth: 2,
+            }}
+            fitView
+            className="bg-background"
+            proOptions={{ hideAttribution: true }}
+          >
+            <Background />
+            <Controls position="bottom-center">
+              <ControlButton
+                onClick={toggleAnimation}
+                title={isAnimated ? "Disable Animated Edges" : "Enable Animated Edges"}
+                className={isAnimated ? "!bg-blue-500 !border-blue-500 hover:!bg-blue-600" : ""}
+              >
+                <Activity
+                  className={`h-4 w-4 ${isAnimated ? 'text-white' : 'text-gray-500'}`}
+                />
+              </ControlButton>
+            </Controls>
+          </ReactFlow>
+        </div>
 
         {/* Node Library - slides from left, positioned after icon bar */}
         <NodeLibrary
           onAddNode={addNode}
           onClose={() => setIsLibraryOpen(false)}
           isOpen={isLibraryOpen}
+          workflowName={workflowName}
+          onRename={(newName) => handleTitleSave(newName)}
         />
 
         {/* Right sidebar for node properties */}
@@ -600,11 +971,57 @@ function WorkflowEditorInner() {
           node={selectedNode}
           onUpdateNode={updateNodeData}
           isOpen={isRightSidebarOpen}
+          onExport={() => setIsExportDialogOpen(true)}
           onClose={() => {
             setIsRightSidebarOpen(false)
             setSelectedNode(null)
           }}
         />
+        {/* Dialogs */}
+        <ExportDialog
+          isOpen={isExportDialogOpen}
+          onClose={() => setIsExportDialogOpen(false)}
+          workflowId={workflowId}
+          workflowName={workflowName || "Workflow"}
+        />
+        <ImportDialog
+          isOpen={isImportDialogOpen}
+          onClose={() => setIsImportDialogOpen(false)}
+        />
+
+        {/* Rename Dialog */}
+        <Dialog open={isRenameDialogOpen} onOpenChange={setIsRenameDialogOpen}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Rename Workflow</DialogTitle>
+              <DialogDescription>
+                Enter a new name for your workflow.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="name" className="text-right">
+                  Name
+                </Label>
+                <Input
+                  id="name"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  className="col-span-3"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleRenameSubmit()
+                    }
+                  }}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="submit" onClick={handleRenameSubmit}>Save changes</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   )

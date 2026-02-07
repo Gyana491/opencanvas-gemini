@@ -16,6 +16,7 @@ interface NodePropertiesProps {
   onUpdateNode: (nodeId: string, data: any) => void
   isOpen: boolean
   onClose: () => void
+  onExport?: () => void
 }
 
 const PROPERTY_COMPONENTS: Record<string, any> = {
