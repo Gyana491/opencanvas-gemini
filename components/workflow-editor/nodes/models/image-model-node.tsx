@@ -105,6 +105,7 @@ export function ImageModelNode({
                             <img
                                 src={imageUrl}
                                 alt="Generated content"
+                                crossOrigin="anonymous"
                                 className="w-full h-full object-cover rounded-lg shadow-2xl"
                             />
                         </div>

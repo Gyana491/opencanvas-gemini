@@ -356,28 +356,33 @@ function WorkflowEditorInner() {
     if (!reactFlowWrapper.current || !workflowId || workflowId === 'new') return
 
     try {
-      // Small delay to ensure render is complete
-      await new Promise(resolve => setTimeout(resolve, 100))
+      // Extended delay to ensure all images are loaded
+      await new Promise(resolve => setTimeout(resolve, 500))
 
       const dataUrl = await toPng(reactFlowWrapper.current, {
-        backgroundColor: '#fff', // or existing background
+        backgroundColor: '#fff',
         width: 1280,
         height: 720,
-        style: {
-          width: '1280px',
-          height: '720px',
-          transform: 'scale(1)', // Ensure no scaling issues
-        },
-        useCORS: true,
+        cacheBust: true,
+        pixelRatio: 1,
         skipAutoScale: true,
+        includeQueryParams: true,
         filter: (node: HTMLElement) => {
-          // Exclude controls and minimap if captured
-          if (node.classList && (node.classList.contains('react-flow__controls') || node.classList.contains('react-flow__minimap') || node.classList.contains('react-flow__panel'))) {
-            return false
+          // Exclude controls, minimap, and panels
+          if (node.classList) {
+            const excludeClasses = [
+              'react-flow__controls',
+              'react-flow__minimap', 
+              'react-flow__panel',
+              'react-flow__attribution'
+            ]
+            if (excludeClasses.some(cls => node.classList.contains(cls))) {
+              return false
+            }
           }
           return true
         }
-      } as any)
+      })
 
       // Convert dataUrl to blob
       const res = await fetch(dataUrl)
@@ -396,10 +401,12 @@ function WorkflowEditorInner() {
         console.log('[Workflow Editor] Thumbnail updated')
         lastThumbnailTimeRef.current = Date.now()
       } else {
-        console.error('[Workflow Editor] Failed to update thumbnail')
+        const errorText = await uploadRes.text()
+        console.error('[Workflow Editor] Failed to update thumbnail:', errorText)
       }
     } catch (error) {
       console.error('[Workflow Editor] Thumbnail generation error:', error instanceof Error ? error.message : error)
+      // Don't throw - allow the app to continue if thumbnail fails
     }
   }, [workflowId])
 

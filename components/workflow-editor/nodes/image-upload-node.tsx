@@ -125,6 +125,7 @@ export const ImageUploadNode = memo(({ data, selected, id }: NodeProps) => {
               <img
                 src={preview}
                 alt="Preview"
+                crossOrigin="anonymous"
                 className="w-full h-32 object-cover rounded-md"
               />
               <Button

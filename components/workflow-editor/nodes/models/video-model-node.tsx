@@ -107,6 +107,7 @@ export function VideoModelNode({
                             <video
                                 src={videoUrl}
                                 controls
+                                crossOrigin="anonymous"
                                 className="max-w-full max-h-full object-contain rounded-lg shadow-2xl bg-black"
                                 style={{ maxHeight: '480px' }}
                             >
