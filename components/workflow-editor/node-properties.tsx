@@ -3,7 +3,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
-import { X, Download } from "lucide-react"
+import { X, Download, Share2 } from "lucide-react"
 import { motion, AnimatePresence } from "motion/react"
 import { ImagenProperties } from "./nodes/models/imagen-node"
 import { ImageUploadProperties } from "./nodes/image-upload-node"
@@ -17,6 +17,8 @@ interface NodePropertiesProps {
   isOpen: boolean
   onClose: () => void
   onExport?: () => void
+  onShare?: () => void
+  canShare?: boolean
 }
 
 const PROPERTY_COMPONENTS: Record<string, any> = {
@@ -28,7 +30,15 @@ const PROPERTY_COMPONENTS: Record<string, any> = {
   veo3: Veo3Properties,
 }
 
-export function NodeProperties({ node, onUpdateNode, isOpen, onClose, onExport }: NodePropertiesProps) {
+export function NodeProperties({
+  node,
+  onUpdateNode,
+  isOpen,
+  onClose,
+  onExport,
+  onShare,
+  canShare = true
+}: NodePropertiesProps) {
   if (!node) return null;
 
   const PropertyComponent = PROPERTY_COMPONENTS[node.type];
@@ -55,15 +65,27 @@ export function NodeProperties({ node, onUpdateNode, isOpen, onClose, onExport }
               >
                 <X className="h-4 w-4" />
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onExport}
-                className="h-8 gap-2 bg-background/50 hover:bg-accent transition-colors text-xs font-medium"
-              >
-                <Download className="h-3.5 w-3.5" />
-                Export
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onShare}
+                  disabled={!canShare || !onShare}
+                  className="h-8 gap-2 bg-background/50 hover:bg-accent transition-colors text-xs font-medium"
+                >
+                  <Share2 className="h-3.5 w-3.5" />
+                  Share
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onExport}
+                  className="h-8 gap-2 bg-background/50 hover:bg-accent transition-colors text-xs font-medium"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Export
+                </Button>
+              </div>
             </div>
 
             {/* Bottom Row: Node Settings Info */}

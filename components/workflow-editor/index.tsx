@@ -977,6 +977,8 @@ function WorkflowEditorInner() {
           node={selectedNode}
           onUpdateNode={updateNodeData}
           isOpen={isRightSidebarOpen}
+          onShare={() => setIsShareDialogOpen(true)}
+          canShare={Boolean(workflowId && workflowId !== 'new')}
           onExport={() => setIsExportDialogOpen(true)}
           onClose={() => {
             setIsRightSidebarOpen(false)
