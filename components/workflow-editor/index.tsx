@@ -216,13 +216,9 @@ function stripRuntimeDataFromNodeData<T extends Record<string, unknown>>(nodeTyp
       continue
     }
 
-    // Connection payloads are derived from edges and can be rebuilt at runtime.
-    if (
-      key === 'connectedPrompt' ||
-      key === 'connectedVideo' ||
-      key.startsWith('connectedImage') ||
-      key.startsWith('connectedRefImage')
-    ) {
+    // Connection payloads are derived from edges and rebuilt at runtime.
+    // Never persist any `connected*` field (e.g. connectedFirstFrame/connectedLastFrame).
+    if (key.startsWith('connected')) {
       continue
     }
 
