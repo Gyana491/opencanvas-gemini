@@ -1,7 +1,8 @@
-const CACHE_NAME = "opencanvas-pwa-v1";
+const CACHE_NAME = "opencanvas-pwa-v3";
 const APP_SHELL = [
   "/",
   "/login",
+  "/offline.html",
   "/manifest.webmanifest",
   "/pwa/icon-192x192.png",
   "/pwa/icon-512x512.png",
@@ -51,16 +52,21 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
+          if (response.ok) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
+          }
           return response;
         })
         .catch(async () => {
-          const cachedPage = await caches.match(request);
-          if (cachedPage) {
-            return cachedPage;
+          const offlinePage = await caches.match("/offline.html");
+          if (offlinePage) {
+            return offlinePage;
           }
-          return caches.match("/login");
+          return new Response("No internet connection", {
+            status: 503,
+            headers: { "Content-Type": "text/plain; charset=utf-8" },
+          });
         }),
     );
     return;
