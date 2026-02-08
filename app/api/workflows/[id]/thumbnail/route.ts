@@ -1,7 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
-import { uploadFile } from "@/lib/r2";
+import { deleteFile, uploadFile } from "@/lib/r2";
+
+function extractStorageKeyFromUrl(url: string): string | null {
+    try {
+        const parsedUrl = new URL(url);
+        return parsedUrl.pathname.replace(/^\/+/, "") || null;
+    } catch {
+        return null;
+    }
+}
 
 export async function POST(
     req: NextRequest,
@@ -27,6 +36,11 @@ export async function POST(
         // Verify ownership
         const workflow = await prisma.workflow.findUnique({
             where: { id: params.id },
+            select: {
+                id: true,
+                userId: true,
+                thumbnail: true,
+            },
         });
 
         if (!workflow) {
@@ -37,18 +51,34 @@ export async function POST(
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
 
-        // Upload to R2
-        const buffer = Buffer.from(await file.arrayBuffer());
-        const timestamp = Date.now();
-        const key = `workflows/${workflow.id}/thumbnail-${timestamp}.png`;
+        const key = `workflows/${workflow.id}/thumbnail.png`;
+        const oldThumbnailKey = workflow.thumbnail ? extractStorageKeyFromUrl(workflow.thumbnail) : null;
+        const isLegacyThumbnailKey =
+            oldThumbnailKey !== null &&
+            oldThumbnailKey !== key &&
+            oldThumbnailKey.startsWith(`workflows/${workflow.id}/`);
 
-        const url = await uploadFile(buffer, key, file.type);
+        // Upload to R2 (single key per workflow so updates overwrite the existing thumbnail)
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const url = await uploadFile(buffer, key, file.type || "image/png");
 
         // Update database
-        const updatedWorkflow = await prisma.workflow.update({
-            where: { id: workflow.id },
-            data: { thumbnail: url },
-        });
+        if (workflow.thumbnail !== url) {
+            await prisma.workflow.update({
+                where: { id: workflow.id },
+                data: { thumbnail: url },
+                select: { id: true },
+            });
+        }
+
+        // Clean up old key from timestamp-based naming (or any legacy key)
+        if (isLegacyThumbnailKey && oldThumbnailKey) {
+            try {
+                await deleteFile(oldThumbnailKey);
+            } catch (deleteError) {
+                console.error("Old thumbnail cleanup failed:", deleteError);
+            }
+        }
 
         return NextResponse.json({ success: true, url });
     } catch (error) {
