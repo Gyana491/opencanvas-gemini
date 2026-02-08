@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Image as ImageIcon, Upload, MoreVertical, X, Loader2 } from 'lucide-react'
 import { uploadToR2 } from '@/lib/utils/upload'
 import { NodeContextMenu } from '../node-context-menu'
+import { OUTPUT_HANDLE_IDS } from '@/data/models'
 
 export const ImageNode = memo(({ data, selected, id }: NodeProps) => {
   const params = useParams()
@@ -143,14 +144,12 @@ export const ImageNode = memo(({ data, selected, id }: NodeProps) => {
         {/* Outputs Handles - Positioned to look integrated */}
 
         {/* Image Handle */}
-        <div className="absolute top-1/2 right-0 translate-x-1/2 -translate-y-1/2 flex items-center">
-          <Handle
-            type="source"
-            position={Position.Right}
-            id="image"
-            className="!w-3 !h-3 !border-2 !bg-emerald-400 !border-emerald-200"
-          />
-        </div>
+        <Handle
+          type="source"
+          position={Position.Right}
+          id={OUTPUT_HANDLE_IDS.image}
+          className="!w-3 !h-3 !border-2 !bg-emerald-400 !border-emerald-200"
+        />
 
       </Card>
     </NodeContextMenu>
