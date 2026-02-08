@@ -506,7 +506,8 @@ export const Veo31GeneratePreviewNode = memo(({ data, selected, id }: NodeProps)
                         (data.onUpdateNodeData as (id: string, data: any) => void)(id, {
                             output: assetPathStr,
                             assetPath: assetPathStr,
-                            videoUrl: assetPathStr
+                            videoUrl: assetPathStr,
+                            storageKey: typeof result.storageKey === 'string' ? result.storageKey : undefined,
                         });
                     }
                 } else {

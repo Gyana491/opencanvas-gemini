@@ -139,9 +139,12 @@ export async function GET(req: NextRequest) {
 
             const fileName = `veo_${Date.now()}_${nanoid()}.mp4`;
 
-            const storageKey = workflowId
-                ? `workflows/${workflowId}/${nodeId || 'generated'}/${fileName}`
-                : `temp/${nanoid()}/${fileName}`;
+            // Always persist generated videos under workflows/* so they remain durable in R2.
+            const resolvedWorkflowId =
+                workflowId && workflowId.trim() && workflowId !== 'new'
+                    ? workflowId.trim()
+                    : `unsaved-${nanoid()}`;
+            const storageKey = `workflows/${resolvedWorkflowId}/videos/${nodeId || 'generated'}/${fileName}`;
 
             // Upload to R2
             if (!videoBuffer) {
@@ -149,11 +152,17 @@ export async function GET(req: NextRequest) {
             }
 
             const url = await uploadFile(videoBuffer, storageKey, 'video/mp4');
+            console.log('[Veo Status][R2 Upload]', {
+                workflowId: resolvedWorkflowId,
+                nodeId: nodeId || 'generated',
+                storageKey,
+                url,
+            });
 
             return NextResponse.json({
                 state: 'done',
                 done: true,
-                response: { url },
+                response: { url, storageKey },
             });
         }
 
