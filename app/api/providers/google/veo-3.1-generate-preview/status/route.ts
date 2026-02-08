@@ -90,7 +90,13 @@ export async function GET(req: NextRequest) {
 
         if (result.done) {
             if (result.error) {
-                return NextResponse.json({ state: 'error', error: result.error.message });
+                return NextResponse.json({
+                    state: 'error',
+                    done: true,
+                    error: {
+                        message: result.error?.message || 'Video generation failed',
+                    },
+                });
             }
 
             let videoBuffer: Buffer | undefined;
@@ -103,6 +109,7 @@ export async function GET(req: NextRequest) {
                 if (!videoUri) {
                     return NextResponse.json({
                         state: 'error',
+                        done: true,
                         error: 'No video URL in response',
                         details: { responseKeys: Object.keys(result?.response || {}) }
                     });
@@ -143,10 +150,14 @@ export async function GET(req: NextRequest) {
 
             const url = await uploadFile(videoBuffer, storageKey, 'video/mp4');
 
-            return NextResponse.json({ state: 'done', url });
+            return NextResponse.json({
+                state: 'done',
+                done: true,
+                response: { url },
+            });
         }
 
-        return NextResponse.json({ state: 'processing' });
+        return NextResponse.json({ state: 'processing', done: false });
 
     } catch (error: any) {
         console.error('Error in veo status route:', error);

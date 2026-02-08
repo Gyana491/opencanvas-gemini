@@ -16,6 +16,7 @@ import {
   type OnConnectStart,
   type Connection,
   type Edge,
+  type EdgeChange,
   type Node,
   type IsValidConnection,
   MarkerType,
@@ -667,8 +668,41 @@ function WorkflowEditorInner() {
     setNodes((currentNodes) => {
       const updatedNodes = currentNodes.map((node) => {
         const incomingEdges = edges.filter((edge) => edge.target === node.id)
+        const isVeoNode = node.type === 'veo-3.1-generate-preview'
 
         const connectedData: Record<string, any> = {}
+        if (isVeoNode) {
+          connectedData.connectedPrompt = ''
+          connectedData.connectedFirstFrame = ''
+          connectedData.connectedLastFrame = ''
+          connectedData.connectedVideo = ''
+          const refImageCount = Number(node.data.imageInputCount) || 0
+          for (let i = 0; i < refImageCount; i++) {
+            connectedData[`connectedRefImage_${i}`] = ''
+          }
+        }
+
+        const resolveSourceImageValue = (sourceNode: Node<WorkflowNodeData>, sourceHandle?: string | null) => {
+          if (sourceNode.type === 'imageUpload') {
+            return sourceNode.data.imageUrl || sourceNode.data.assetPath || ''
+          }
+          if (sourceNode.type === 'gemini-2.5-flash-image' || sourceNode.type === 'gemini-3-pro-image-preview' || sourceNode.type === 'imagen-4.0-generate-001') {
+            return sourceNode.data.output || ''
+          }
+          if (sourceNode.type === 'blur' || sourceNode.type === 'colorGrading') {
+            return sourceNode.data.output || (typeof sourceNode.data.getOutput === 'function' ? sourceNode.data.getOutput() : '')
+          }
+          if (sourceNode.type === 'crop') {
+            return sourceNode.data.imageOutput || (typeof sourceNode.data.getOutput === 'function' ? sourceNode.data.getOutput() : '')
+          }
+          if (sourceNode.type === 'painter') {
+            if (sourceHandle === TOOL_OUTPUT_HANDLE_IDS.painterMask) {
+              return sourceNode.data.maskOutput || (typeof sourceNode.data.getMaskOutput === 'function' ? sourceNode.data.getMaskOutput() : '')
+            }
+            return sourceNode.data.output || sourceNode.data.imageOutput || (typeof sourceNode.data.getOutput === 'function' ? sourceNode.data.getOutput() : '')
+          }
+          return sourceNode.data.imageOutput || sourceNode.data.output || sourceNode.data.imageUrl || sourceNode.data.assetPath || ''
+        }
 
         incomingEdges.forEach((edge) => {
           const sourceNode = currentNodes.find((n) => n.id === edge.source)
@@ -686,46 +720,28 @@ function WorkflowEditorInner() {
             }
           } else if (
             targetHandle === 'image' ||
+            targetHandle === 'firstFrame' ||
+            targetHandle === 'lastFrame' ||
             targetHandle === 'imageOutput' ||
             targetHandle?.startsWith('image_') ||
             targetHandle?.startsWith('ref_image_')
           ) {
-            const dataKey = (targetHandle === 'image' || targetHandle === 'imageOutput')
-              ? 'connectedImage'
-              : targetHandle?.startsWith('ref_image_')
-                ? `connectedRefImage_${targetHandle.split('_')[2]}`
-                : `connectedImage_${targetHandle.split('_')[1]}`
+            const sourceImageValue = resolveSourceImageValue(sourceNode, sourceHandle)
+            let dataKey: string
 
-            if (sourceNode.type === 'imageUpload') {
-              connectedData[dataKey] = sourceNode.data.imageUrl || ''
-            } else if (sourceNode.type === 'gemini-2.5-flash-image' || sourceNode.type === 'gemini-3-pro-image-preview' || sourceNode.type === 'imagen-4.0-generate-001') {
-              // Get output from model nodes
-              connectedData[dataKey] = sourceNode.data.output
-            } else if (sourceNode.type === 'blur' || sourceNode.type === 'colorGrading') {
-              connectedData[dataKey] =
-                sourceNode.data.output ||
-                (typeof sourceNode.data.getOutput === 'function' ? sourceNode.data.getOutput() : null)
-            } else if (sourceNode.type === 'crop') {
-              connectedData[dataKey] =
-                sourceNode.data.imageOutput ||
-                (typeof sourceNode.data.getOutput === 'function' ? sourceNode.data.getOutput() : null)
-            } else if (sourceNode.type === 'painter') {
-              if (sourceHandle === TOOL_OUTPUT_HANDLE_IDS.painterMask) {
-                connectedData[dataKey] =
-                  sourceNode.data.maskOutput ||
-                  (typeof sourceNode.data.getMaskOutput === 'function' ? sourceNode.data.getMaskOutput() : null)
-              } else {
-                connectedData[dataKey] =
-                  sourceNode.data.output ||
-                  sourceNode.data.imageOutput ||
-                  (typeof sourceNode.data.getOutput === 'function' ? sourceNode.data.getOutput() : null)
-              }
-            } else if (sourceNode.data.imageOutput) {
-              connectedData[dataKey] = sourceNode.data.imageOutput
-            } else if (sourceNode.data.output) {
-              // Fallback for any node with output field
-              connectedData[dataKey] = sourceNode.data.output
+            if ((targetHandle === 'image' || targetHandle === 'firstFrame') && isVeoNode) {
+              dataKey = 'connectedFirstFrame'
+            } else if (targetHandle === 'lastFrame' && isVeoNode) {
+              dataKey = 'connectedLastFrame'
+            } else if (targetHandle === 'image' || targetHandle === 'imageOutput') {
+              dataKey = 'connectedImage'
+            } else if (targetHandle?.startsWith('ref_image_')) {
+              dataKey = `connectedRefImage_${targetHandle.split('_')[2]}`
+            } else {
+              dataKey = `connectedImage_${targetHandle?.split('_')[1]}`
             }
+
+            connectedData[dataKey] = sourceImageValue || ''
           } else if (targetHandle === 'video' || targetHandle === OUTPUT_HANDLE_IDS.video) {
             connectedData.connectedVideo =
               sourceNode.data.output ||
@@ -791,12 +807,24 @@ function WorkflowEditorInner() {
         }
 
         // Only update if there are connected data changes
-        if (incomingEdges.length > 0) {
+        if (incomingEdges.length > 0 || isVeoNode) {
           const hasChanges = Object.keys(connectedData).some(
             (key) => node.data[key] !== connectedData[key]
           )
 
           if (hasChanges) {
+            if (isVeoNode) {
+              console.log('[Workflow Editor][Veo Wiring Update]', {
+                nodeId: node.id,
+                incomingEdges: incomingEdges.map((edge) => ({
+                  id: edge.id,
+                  source: edge.source,
+                  sourceHandle: edge.sourceHandle,
+                  targetHandle: edge.targetHandle,
+                })),
+                connectedData,
+              })
+            }
             return {
               ...node,
               data: {
@@ -878,6 +906,15 @@ function WorkflowEditorInner() {
 
   const onConnect = useCallback(
     (connection: Connection) => {
+      const sourceNode = nodes.find((node) => node.id === connection.source)
+      const targetNode = nodes.find((node) => node.id === connection.target)
+      if (sourceNode?.type === 'veo-3.1-generate-preview' || targetNode?.type === 'veo-3.1-generate-preview') {
+        console.log('[Workflow Editor][Edge Connect][Veo]', {
+          connection,
+          sourceType: sourceNode?.type,
+          targetType: targetNode?.type,
+        })
+      }
       setEdges((eds) =>
         addEdge(
           {
@@ -888,7 +925,40 @@ function WorkflowEditorInner() {
         )
       )
     },
-    [setEdges, isAnimated]
+    [setEdges, isAnimated, nodes]
+  )
+
+  const onEdgesChangeWithDebug = useCallback(
+    (changes: EdgeChange<Edge>[]) => {
+      const relevantChanges = changes.map((change) => {
+        const edgeId = 'id' in change ? change.id : undefined
+        const existingEdge = edgeId ? edges.find((edge) => edge.id === edgeId) : undefined
+        if (!existingEdge) return null
+
+        const sourceNode = nodes.find((node) => node.id === existingEdge.source)
+        const targetNode = nodes.find((node) => node.id === existingEdge.target)
+        const isVeoRelated = sourceNode?.type === 'veo-3.1-generate-preview' || targetNode?.type === 'veo-3.1-generate-preview'
+        if (!isVeoRelated) return null
+
+        return {
+          changeType: change.type,
+          edgeId: existingEdge.id,
+          source: existingEdge.source,
+          sourceHandle: existingEdge.sourceHandle,
+          sourceType: sourceNode?.type,
+          target: existingEdge.target,
+          targetHandle: existingEdge.targetHandle,
+          targetType: targetNode?.type,
+        }
+      }).filter(Boolean)
+
+      if (relevantChanges.length > 0) {
+        console.log('[Workflow Editor][Edge Change][Veo]', relevantChanges)
+      }
+
+      onEdgesChange(changes)
+    },
+    [edges, nodes, onEdgesChange]
   )
 
   const onConnectStart = useCallback<OnConnectStart>((_, params) => {
@@ -903,6 +973,22 @@ function WorkflowEditorInner() {
 
   const onReconnect = useCallback(
     (oldEdge: Edge, newConnection: Connection) => {
+      const sourceNode = nodes.find((node) => node.id === newConnection.source)
+      const targetNode = nodes.find((node) => node.id === newConnection.target)
+      if (sourceNode?.type === 'veo-3.1-generate-preview' || targetNode?.type === 'veo-3.1-generate-preview') {
+        console.log('[Workflow Editor][Edge Reconnect][Veo]', {
+          oldEdge: {
+            id: oldEdge.id,
+            source: oldEdge.source,
+            sourceHandle: oldEdge.sourceHandle,
+            target: oldEdge.target,
+            targetHandle: oldEdge.targetHandle,
+          },
+          newConnection,
+          sourceType: sourceNode?.type,
+          targetType: targetNode?.type,
+        })
+      }
       setEdges((eds) => {
         const reconnectedEdges = reconnectEdge(oldEdge, newConnection, eds, { shouldReplaceId: false })
 
@@ -916,7 +1002,7 @@ function WorkflowEditorInner() {
         )
       })
     },
-    [setEdges, isAnimated]
+    [setEdges, isAnimated, nodes]
   )
 
   const onReconnectStart = useCallback((_: React.MouseEvent, edge: Edge) => {
@@ -1464,7 +1550,7 @@ function WorkflowEditorInner() {
               nodes={nodes}
               edges={edges}
               onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
+              onEdgesChange={onEdgesChangeWithDebug}
               onConnect={onConnect}
               onReconnect={onReconnect}
               isValidConnection={isValidConnection}
@@ -1529,6 +1615,22 @@ function WorkflowEditorInner() {
               <button
                 className="w-full px-3 py-1.5 text-sm text-left hover:bg-accent hover:text-accent-foreground flex items-center gap-2"
                 onClick={() => {
+                  const edgeToDelete = edges.find((e) => e.id === edgeContextMenu.edgeId)
+                  if (edgeToDelete) {
+                    const sourceNode = nodes.find((node) => node.id === edgeToDelete.source)
+                    const targetNode = nodes.find((node) => node.id === edgeToDelete.target)
+                    if (sourceNode?.type === 'veo-3.1-generate-preview' || targetNode?.type === 'veo-3.1-generate-preview') {
+                      console.log('[Workflow Editor][Edge Delete][Veo]', {
+                        edgeId: edgeToDelete.id,
+                        source: edgeToDelete.source,
+                        sourceHandle: edgeToDelete.sourceHandle,
+                        sourceType: sourceNode?.type,
+                        target: edgeToDelete.target,
+                        targetHandle: edgeToDelete.targetHandle,
+                        targetType: targetNode?.type,
+                      })
+                    }
+                  }
                   setEdges((edges) => edges.filter((e) => e.id !== edgeContextMenu.edgeId))
                   setEdgeContextMenu(null)
                   toast.success('Edge deleted')

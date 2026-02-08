@@ -133,6 +133,12 @@ export const MODELS: Model[] = [
                 allowedSourceIds: [OUTPUT_HANDLE_IDS.image],
             },
             {
+                id: 'lastFrame',
+                label: 'Last Frame',
+                type: 'image',
+                allowedSourceIds: [OUTPUT_HANDLE_IDS.image],
+            },
+            {
                 id: 'video',
                 label: 'Extend Video',
                 type: 'video',

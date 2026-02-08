@@ -8,8 +8,8 @@ import { Video } from 'lucide-react'
 import { z } from 'zod'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { VideoModelNode } from './video-model-node'
-import { resolveImageInput } from '@/lib/utils/image-processing'
 import { downloadMedia } from '@/lib/utils/download'
+import { uploadToR2 } from '@/lib/utils/upload'
 import { MODELS } from '@/data/models';
 
 const inputSchema = z.object({
@@ -23,6 +23,23 @@ const inputSchema = z.object({
 });
 
 const getStringField = (value: unknown): string => typeof value === 'string' ? value : '';
+const extensionFromMimeType = (mimeType: string): string => {
+    const normalized = mimeType.toLowerCase();
+    if (normalized.includes('jpeg') || normalized.includes('jpg')) return 'jpg';
+    if (normalized.includes('webp')) return 'webp';
+    if (normalized.includes('heic')) return 'heic';
+    if (normalized.includes('heif')) return 'heif';
+    return 'png';
+};
+const getCallableOutput = (value: unknown): string => {
+    if (typeof value !== 'function') return '';
+    try {
+        const result = value();
+        return typeof result === 'string' ? result : '';
+    } catch {
+        return '';
+    }
+};
 
 const getPromptFromSourceNode = (sourceNode: any): string => {
     if (sourceNode?.type === 'textInput') {
@@ -38,14 +55,21 @@ const getPromptFromSourceNode = (sourceNode: any): string => {
 
 const getImageFromSourceNode = (sourceNode: any): string => {
     if (sourceNode?.type === 'imageUpload') {
-        return getStringField(sourceNode?.data?.imageUrl);
+        return (
+            getStringField(sourceNode?.data?.imageUrl) ||
+            getStringField(sourceNode?.data?.assetPath)
+        );
     }
 
     return (
         getStringField(sourceNode?.data?.output) ||
+        getStringField(sourceNode?.data?.imageOutput) ||
+        getStringField(sourceNode?.data?.maskOutput) ||
         getStringField(sourceNode?.data?.imageUrl) ||
         getStringField(sourceNode?.data?.assetPath) ||
-        getStringField(sourceNode?.data?.connectedImage)
+        getStringField(sourceNode?.data?.connectedImage) ||
+        getCallableOutput(sourceNode?.data?.getOutput) ||
+        getCallableOutput(sourceNode?.data?.getMaskOutput)
     );
 };
 
@@ -119,9 +143,43 @@ export const Veo31GeneratePreviewNode = memo(({ data, selected, id }: NodeProps)
     const [progress, setProgress] = useState<string>('');
 
     const prompt = (data?.connectedPrompt as string) || (data?.prompt as string) || '';
+    const aspectRatio = (data?.aspectRatio as string) || '16:9';
+    const resolution = (data?.resolution as string) || '720p';
+    const durationSeconds = String(data?.durationSeconds || '8');
     const imageInputCount = (data?.imageInputCount as number) ?? 0;
 
     const updateNodeInternals = useUpdateNodeInternals();
+
+    useEffect(() => {
+        const incomingEdges = edges.filter(edge => edge.target === id);
+        console.log('[Veo Node][Handle Snapshot]', {
+            nodeId: id,
+            imageInputCount,
+            incomingEdges: incomingEdges.map((edge) => ({
+                id: edge.id,
+                source: edge.source,
+                sourceHandle: edge.sourceHandle,
+                targetHandle: edge.targetHandle,
+            })),
+            connectedPrompt: data?.connectedPrompt || '',
+            connectedFirstFrame: data?.connectedFirstFrame || '',
+            connectedLastFrame: data?.connectedLastFrame || '',
+            connectedVideo: data?.connectedVideo || '',
+            connectedRefImages: Array.from({ length: imageInputCount }).map((_, i) => ({
+                key: `connectedRefImage_${i}`,
+                value: data?.[`connectedRefImage_${i}`] || ''
+            })),
+        });
+    }, [
+        id,
+        edges,
+        imageInputCount,
+        data?.connectedPrompt,
+        data?.connectedFirstFrame,
+        data?.connectedLastFrame,
+        data?.connectedVideo,
+        data
+    ]);
 
     // Helper function to get fresh data from connected nodes
     const getFreshConnectedData = () => {
@@ -129,6 +187,10 @@ export const Veo31GeneratePreviewNode = memo(({ data, selected, id }: NodeProps)
         const incomingEdges = edges.filter(edge => edge.target === id);
 
         let freshPrompt = '';
+        let freshFirstFrame = '';
+        let freshLastFrame = '';
+        let hasFirstFrameEdge = false;
+        let hasLastFrameEdge = false;
         const freshImages: { [key: string]: string } = {};
 
         incomingEdges.forEach(edge => {
@@ -139,22 +201,61 @@ export const Veo31GeneratePreviewNode = memo(({ data, selected, id }: NodeProps)
 
             // Get prompt from text input
             if (targetHandle === 'prompt') {
-                if (sourceNode.type === 'textInput') {
-                    freshPrompt = (sourceNode.data?.text as string) || '';
-                }
+                freshPrompt = getPromptFromSourceNode(sourceNode);
+            }
+            else if (targetHandle === 'image' || targetHandle === 'firstFrame') {
+                hasFirstFrameEdge = true;
+                freshFirstFrame = getImageFromSourceNode(sourceNode);
+            }
+            else if (targetHandle === 'lastFrame') {
+                hasLastFrameEdge = true;
+                freshLastFrame = getImageFromSourceNode(sourceNode);
             }
             // Get images from image handles
-            else if (targetHandle?.startsWith('image_')) {
+            else if (targetHandle?.startsWith('ref_image_') || targetHandle?.startsWith('image_')) {
                 const imageKey = targetHandle;
-                if (sourceNode.type === 'imageUpload') {
-                    freshImages[imageKey] = (sourceNode.data?.imageUrl as string) || '';
-                } else if (sourceNode.type === 'gemini-2.5-flash-image' || sourceNode.type === 'gemini-3-pro-image-preview' || sourceNode.type === 'imagen-4.0-generate-001') {
-                    freshImages[imageKey] = (sourceNode.data?.output as string) || '';
-                }
+                freshImages[imageKey] = getImageFromSourceNode(sourceNode);
             }
         });
 
-        return { freshPrompt, freshImages };
+        if (!freshPrompt) {
+            freshPrompt = getStringField(data?.connectedPrompt) || getStringField(data?.prompt);
+        }
+
+        if (hasFirstFrameEdge && !freshFirstFrame) {
+            freshFirstFrame =
+                getStringField(data?.connectedFirstFrame) ||
+                getStringField(data?.connectedImage);
+        }
+
+        if (hasLastFrameEdge && !freshLastFrame) {
+            freshLastFrame = getStringField(data?.connectedLastFrame);
+        }
+
+        for (let i = 0; i < imageInputCount; i++) {
+            const key = `ref_image_${i}`;
+            if (!freshImages[key]) {
+                freshImages[key] = getStringField(data?.[`connectedRefImage_${i}`]);
+            }
+        }
+
+        console.log('[Veo Node][Fresh Connected Data]', {
+            nodeId: id,
+            incomingEdges: incomingEdges.map((edge) => ({
+                id: edge.id,
+                source: edge.source,
+                sourceHandle: edge.sourceHandle,
+                targetHandle: edge.targetHandle,
+            })),
+            freshPrompt,
+            freshFirstFrame,
+            freshLastFrame,
+            hasFirstFrameEdge,
+            hasLastFrameEdge,
+            freshImages,
+        });
+
+        return { freshPrompt, freshFirstFrame, freshLastFrame, hasFirstFrameEdge, hasLastFrameEdge, freshImages };
     };
 
     // Notify React Flow when handles change
@@ -179,8 +280,10 @@ export const Veo31GeneratePreviewNode = memo(({ data, selected, id }: NodeProps)
 
     const inputs = [
         { id: 'prompt', label: 'Prompt', type: 'text', required: true },
+        { id: 'image', label: 'First Frame', type: 'image' },
+        { id: 'lastFrame', label: 'Last Frame', type: 'image' },
         ...Array.from({ length: imageInputCount }).map((_, i) => ({
-            id: `image_${i}`,
+            id: `ref_image_${i}`,
             label: `Ref Image ${i + 1}`,
             type: 'image'
         }))
@@ -196,7 +299,17 @@ export const Veo31GeneratePreviewNode = memo(({ data, selected, id }: NodeProps)
 
         while (attempts < maxAttempts) {
             try {
-                const response = await fetch(`/api/providers/google/veo-3.1-generate-preview/status?name=${encodeURIComponent(operationName)}`);
+                const params = new URLSearchParams({
+                    name: operationName,
+                });
+                if (workflowId) {
+                    params.set('workflowId', workflowId);
+                }
+                if (id) {
+                    params.set('nodeId', id);
+                }
+
+                const response = await fetch(`/api/providers/google/veo-3.1-generate-preview/status?${params.toString()}`);
 
                 if (!response.ok) {
                     throw new Error('Failed to check status');
@@ -205,7 +318,7 @@ export const Veo31GeneratePreviewNode = memo(({ data, selected, id }: NodeProps)
                 const data = await response.json();
 
                 if (data.done) {
-                    if (data.error) {
+                    if (data.error?.message) {
                         throw new Error(data.error.message || 'Video generation failed');
                     }
                     return data.response; // Should contain the video URI
@@ -229,10 +342,10 @@ export const Veo31GeneratePreviewNode = memo(({ data, selected, id }: NodeProps)
             setProgress('Starting...');
 
             // Get FRESH data from connected nodes
-            const { freshPrompt, freshImages } = getFreshConnectedData();
+            const { freshPrompt, freshFirstFrame, freshLastFrame, hasFirstFrameEdge, hasLastFrameEdge, freshImages } = getFreshConnectedData();
             const finalPrompt = freshPrompt || prompt;
 
-            console.log('[Veo Fresh Data]', { freshPrompt, freshImages, finalPrompt });
+            console.log('[Veo Fresh Data]', { freshPrompt, freshFirstFrame, freshLastFrame, freshImages, finalPrompt });
 
             if (!finalPrompt) {
                 throw new Error('Prompt is required');
@@ -242,34 +355,135 @@ export const Veo31GeneratePreviewNode = memo(({ data, selected, id }: NodeProps)
             const requestBody: any = {
                 prompt: finalPrompt,
                 workflowId,
-                nodeId: id
+                nodeId: id,
+                parameters: {
+                    aspectRatio,
+                    resolution,
+                    durationSeconds,
+                },
             };
+
+            const makeServerReachableImageUrl = async (inputUrl: string, label: string) => {
+                console.log('[Veo Node][Normalize Image Input]', {
+                    nodeId: id,
+                    label,
+                    inputUrl,
+                    isBlob: inputUrl.startsWith('blob:'),
+                });
+
+                if (!inputUrl.startsWith('blob:')) {
+                    return inputUrl;
+                }
+
+                if (!workflowId || workflowId === 'new') {
+                    throw new Error('First/last frame uses local blob URL, but workflow ID is missing. Save the workflow and retry.');
+                }
+
+                const blobResponse = await fetch(inputUrl);
+                if (!blobResponse.ok) {
+                    throw new Error(`Failed to read local ${label} image.`);
+                }
+
+                const blob = await blobResponse.blob();
+                const mimeType = blob.type || 'image/png';
+                const extension = extensionFromMimeType(mimeType);
+                const fileName = `veo_${label}_${Date.now()}.${extension}`;
+
+                const uploaded = await uploadToR2(blob, workflowId, id, fileName);
+                if (!uploaded.success || !uploaded.url) {
+                    throw new Error(uploaded.error || `Failed to upload ${label} image to storage.`);
+                }
+
+                console.log('[Veo Node][Normalize Image Input][Uploaded]', {
+                    nodeId: id,
+                    label,
+                    uploadedUrl: uploaded.url,
+                });
+
+                return uploaded.url;
+            };
+
+            if (freshFirstFrame) {
+                requestBody.imageUrl = await makeServerReachableImageUrl(freshFirstFrame, 'first-frame');
+            }
+
+            if (freshLastFrame) {
+                if (!requestBody.imageUrl) {
+                    throw new Error('Last frame requires a first frame input.');
+                }
+                requestBody.lastFrameUrl = await makeServerReachableImageUrl(freshLastFrame, 'last-frame');
+            }
+            if (hasLastFrameEdge && !hasFirstFrameEdge) {
+                throw new Error('Last frame requires first frame input.');
+            }
+            if (hasFirstFrameEdge && !requestBody.imageUrl) {
+                throw new Error('First frame input is connected but has no image data yet. Run/generate the source image first.');
+            }
 
             // Handle reference images if any
             if (Object.keys(freshImages).length > 0) {
-                const imageParts = [];
+                const referenceImageUrls = [];
                 for (let i = 0; i < imageInputCount; i++) {
-                    const connectedImage = freshImages[`image_${i}`];
+                    const connectedImage = freshImages[`ref_image_${i}`] || freshImages[`image_${i}`];
                     if (connectedImage) {
-                        try {
-                            const { mimeType, base64Data } = await resolveImageInput(connectedImage);
-                            imageParts.push({
-                                inlineData: {
-                                    mimeType: mimeType,
-                                    data: base64Data
-                                }
-                            });
-                        } catch (e) {
-                            console.error(`Failed to resolve ref image ${i}`, e);
-                            throw new Error(`Failed to load reference image ${i + 1}. Please check the connected input.`);
-                        }
+                        const resolvableUrl = await makeServerReachableImageUrl(connectedImage, `reference-${i + 1}`);
+                        referenceImageUrls.push(resolvableUrl);
                     }
                 }
 
-                if (imageParts.length > 0) {
-                    requestBody.images = imageParts;
+                if (referenceImageUrls.length > 0) {
+                    requestBody.referenceImageUrls = referenceImageUrls;
+                    requestBody.parameters.durationSeconds = '8';
                 }
             }
+
+            // Interpolation (first + last frame) is expected to be 8s.
+            if (
+                requestBody.imageUrl &&
+                requestBody.lastFrameUrl &&
+                requestBody.parameters?.durationSeconds &&
+                requestBody.parameters.durationSeconds !== '8'
+            ) {
+                requestBody.parameters.durationSeconds = '8';
+            }
+
+            // Veo 3.1 requires 8s duration for 1080p/4k output.
+            if (
+                requestBody.parameters.resolution &&
+                ['1080p', '4k'].includes(requestBody.parameters.resolution) &&
+                requestBody.parameters.durationSeconds !== '8'
+            ) {
+                requestBody.parameters.durationSeconds = '8';
+            }
+
+            if (!requestBody.parameters.aspectRatio) {
+                delete requestBody.parameters.aspectRatio;
+            }
+            if (!requestBody.parameters.resolution) {
+                delete requestBody.parameters.resolution;
+            }
+            if (!requestBody.parameters.durationSeconds) {
+                delete requestBody.parameters.durationSeconds;
+            }
+            if (Object.keys(requestBody.parameters).length === 0) {
+                delete requestBody.parameters;
+            }
+            if (!requestBody.imageUrl) {
+                delete requestBody.imageUrl;
+            }
+            if (!requestBody.lastFrameUrl) {
+                delete requestBody.lastFrameUrl;
+            }
+
+            console.log('[Veo Node][Request Payload]', {
+                nodeId: id,
+                requestBody: {
+                    ...requestBody,
+                    imageUrl: requestBody.imageUrl || '',
+                    lastFrameUrl: requestBody.lastFrameUrl || '',
+                    referenceImageUrls: requestBody.referenceImageUrls || [],
+                }
+            });
 
             setProgress('Submitting request...');
 
@@ -288,10 +502,11 @@ export const Veo31GeneratePreviewNode = memo(({ data, selected, id }: NodeProps)
             }
 
             const responseData = await response.json();
+            const operationName = responseData.operationName || responseData.operation?.name || responseData.name;
 
-            if (responseData.success && responseData.operationName) {
+            if (operationName) {
                 // Start polling
-                const result = await pollStatus(responseData.operationName);
+                const result = await pollStatus(operationName);
 
                 if (result && result.url) {
                     const assetPathStr = result.url;
