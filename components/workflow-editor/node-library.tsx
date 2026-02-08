@@ -112,7 +112,7 @@ export function NodeLibrary({ onAddNode, onClose, isOpen, workflowName, onRename
           animate={{ x: 0 }}
           exit={{ x: '-100%' }}
           transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-          className="w-64 border-r bg-background absolute left-0 top-0 bottom-0 z-40 shadow-lg flex flex-col"
+          className="w-64 border-r bg-background absolute left-0 top-0 bottom-0 z-40 shadow-lg flex flex-col min-h-0"
         >
           <div className="px-3 py-2 border-b">
             <div className="flex items-center justify-between mb-2 h-8">
@@ -157,7 +157,7 @@ export function NodeLibrary({ onAddNode, onClose, isOpen, workflowName, onRename
             </div>
           </div>
 
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 min-h-0 overflow-hidden">
             <div className="p-4 space-y-6">
               {/* Tools Section */}
               <div className="space-y-3">
