@@ -144,6 +144,12 @@ export const ImageNode = memo(({ data, selected, id }: NodeProps) => {
         {/* Outputs Handles - Positioned to look integrated */}
 
         {/* Image Handle */}
+        <div
+          className="absolute right-0 translate-x-full -translate-y-1/2 pl-3 text-[10px] font-bold tracking-tight uppercase text-emerald-300"
+          style={{ top: '50%' }}
+        >
+          Image
+        </div>
         <Handle
           type="source"
           position={Position.Right}

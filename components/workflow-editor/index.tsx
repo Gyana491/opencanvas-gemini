@@ -48,6 +48,7 @@ import { useWorkflow } from './hooks/use-workflow'
 import { MODELS, OUTPUT_HANDLE_IDS } from '@/data/models'
 import { TOOLS } from '@/data/tools'
 import { PaneContextMenu } from './pane-context-menu'
+import { uploadToR2 } from '@/lib/utils/upload'
 
 const NODES_WITH_PROPERTIES = [
   'imagen-4.0-generate-001',
@@ -79,6 +80,10 @@ type NodeHandleMeta = {
 }
 
 // OUTPUT_HANDLE_IDS is now imported from @/data/models
+
+type LegacyHandleMeta = Partial<HandleMeta> & {
+  level?: string
+}
 
 const EDGE_COLORS = {
   text: '#38bdf8', // sky-400
@@ -127,9 +132,74 @@ function getEdgeVisualProps(sourceHandle: string | null | undefined, animated: b
   }
 }
 
+function normalizeHandleType(value: unknown, id: string): HandleKind {
+  if (value === 'text' || value === 'image' || value === 'video') {
+    return value
+  }
+
+  if (id === OUTPUT_HANDLE_IDS.text || id === 'prompt' || id.includes('text')) {
+    return 'text'
+  }
+  if (id === OUTPUT_HANDLE_IDS.video || id.includes('video')) {
+    return 'video'
+  }
+  return 'image'
+}
+
+function getDefaultHandleLabel(id: string, type: HandleKind): string {
+  if (id === 'prompt') return 'Prompt'
+  if (id === OUTPUT_HANDLE_IDS.text || id === 'text' || (id === 'output' && type === 'text')) return 'Text'
+  if (id === OUTPUT_HANDLE_IDS.image || id === 'image' || (id === 'output' && type === 'image')) return 'Image'
+  if (id === OUTPUT_HANDLE_IDS.video || id === 'video' || (id === 'output' && type === 'video')) return 'Video'
+
+  const imageMatch = id.match(/^image_(\d+)$/)
+  if (imageMatch) {
+    return `Ref Image ${Number(imageMatch[1]) + 1}`
+  }
+
+  const refImageMatch = id.match(/^ref_image_(\d+)$/)
+  if (refImageMatch) {
+    return `Ref ${Number(refImageMatch[1]) + 1}`
+  }
+
+  return id
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function normalizeHandleList(rawHandles: unknown, direction: 'input' | 'output'): HandleMeta[] {
+  if (!Array.isArray(rawHandles)) {
+    return []
+  }
+
+  return rawHandles.map((rawHandle, index) => {
+    const candidate = (rawHandle && typeof rawHandle === 'object' ? rawHandle : {}) as LegacyHandleMeta
+    const id = typeof candidate.id === 'string' && candidate.id.trim().length > 0
+      ? candidate.id
+      : `${direction}_${index}`
+    const type = normalizeHandleType(candidate.type, id)
+    const rawLabel = typeof candidate.label === 'string' && candidate.label.trim().length > 0
+      ? candidate.label
+      : typeof candidate.level === 'string' && candidate.level.trim().length > 0
+        ? candidate.level
+        : undefined
+    const label = rawLabel || getDefaultHandleLabel(id, type)
+
+    return {
+      id,
+      label,
+      type,
+      required: Boolean(candidate.required),
+      allowedSourceIds: Array.isArray(candidate.allowedSourceIds)
+        ? candidate.allowedSourceIds.filter((sourceId): sourceId is string => typeof sourceId === 'string')
+        : undefined,
+    }
+  })
+}
+
 const RUNTIME_ONLY_TOOL_NODE_TYPES = new Set(['blur', 'colorGrading', 'crop'])
 
-function stripRuntimeDataFromNodeData(nodeType: string | undefined, data: Record<string, unknown>) {
+function stripRuntimeDataFromNodeData<T extends Record<string, unknown>>(nodeType: string | undefined, data: T): T {
   const cleaned: Record<string, unknown> = {}
 
   for (const [key, value] of Object.entries(data)) {
@@ -162,7 +232,7 @@ function stripRuntimeDataFromNodeData(nodeType: string | undefined, data: Record
     cleaned[key] = value
   }
 
-  return cleaned
+  return cleaned as T
 }
 
 function getNodeHandles(nodeType: string | undefined, data?: any): NodeHandleMeta {
@@ -171,8 +241,8 @@ function getNodeHandles(nodeType: string | undefined, data?: any): NodeHandleMet
   const model = MODELS.find(m => m.id === nodeType) || TOOLS.find(t => t.id === nodeType);
   if (!model) return { inputs: [], outputs: [] };
 
-  const inputs = [...(model.inputs || [])];
-  const outputs = [...(model.outputs || [])];
+  const inputs = normalizeHandleList(model.inputs || [], 'input');
+  const outputs = normalizeHandleList(model.outputs || [], 'output');
 
   // Handle dynamic image inputs for specific models
   if (nodeType === 'gemini-2.5-flash-image' || nodeType === 'gemini-3-pro-image-preview') {
@@ -197,7 +267,28 @@ function getNodeHandles(nodeType: string | undefined, data?: any): NodeHandleMet
     }
   }
 
-  return { inputs, outputs };
+  return {
+    inputs: normalizeHandleList(inputs, 'input'),
+    outputs: normalizeHandleList(outputs, 'output'),
+  }
+}
+
+function normalizeNodeHandleData(nodeType: string | undefined, data: unknown): WorkflowNodeData {
+  const safeData = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
+  const defaults = getNodeHandles(nodeType, safeData)
+  const inputs = normalizeHandleList(safeData.inputs ?? defaults.inputs ?? [], 'input')
+  const outputs = normalizeHandleList(safeData.outputs ?? defaults.outputs ?? [], 'output')
+  const model = MODELS.find((m) => m.id === nodeType) || TOOLS.find((t) => t.id === nodeType)
+  const label = typeof safeData.label === 'string' && safeData.label.trim().length > 0
+    ? safeData.label
+    : model?.title || nodeType || 'Node'
+
+  return {
+    ...(safeData as WorkflowNodeData),
+    label,
+    inputs,
+    outputs,
+  }
 }
 
 function WorkflowEditorInner() {
@@ -278,9 +369,10 @@ function WorkflowEditorInner() {
             setWorkflowName(workflow.name)
             const sanitizedLoadedNodes = ((loadedNodes || []) as Node<WorkflowNodeData>[]).map((node) => {
               const rawData = (node.data || {}) as Record<string, unknown>
+              const normalizedData = normalizeNodeHandleData(node.type, rawData)
               return {
                 ...node,
-                data: stripRuntimeDataFromNodeData(node.type, rawData),
+                data: stripRuntimeDataFromNodeData(node.type, normalizedData),
               }
             })
 
@@ -736,12 +828,65 @@ function WorkflowEditorInner() {
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault()
-    event.dataTransfer.dropEffect = 'move'
+    const isFileDrag = Array.from(event.dataTransfer.types || []).includes('Files')
+    event.dataTransfer.dropEffect = isFileDrag ? 'copy' : 'move'
   }, [])
 
   const onDrop = useCallback(
-    (event: React.DragEvent) => {
+    async (event: React.DragEvent) => {
       event.preventDefault()
+      const dropX = event.clientX
+      const dropY = event.clientY
+      const files = Array.from(event.dataTransfer.files || [])
+      const imageFiles = files.filter((file) => file.type.startsWith('image/'))
+
+      if (imageFiles.length > 0) {
+        if (!workflowId || workflowId === 'new') {
+          toast.error('Please wait for the workflow to be ready before dropping images.')
+          return
+        }
+
+        const basePosition = screenToFlowPosition({ x: dropX, y: dropY })
+        const uploadedUrls: string[] = []
+
+        for (let index = 0; index < imageFiles.length; index += 1) {
+          const file = imageFiles[index]
+          const nodeId = `imageUpload-${Date.now()}-${index}`
+          const uploadResult = await uploadToR2(file, workflowId, nodeId, file.name)
+
+          if (!uploadResult.success || !uploadResult.url) {
+            toast.error(`Failed to upload "${file.name}"`)
+            continue
+          }
+
+          uploadedUrls.push(uploadResult.url)
+
+          const newNode = {
+            id: nodeId,
+            type: 'imageUpload',
+            position: {
+              x: basePosition.x + index * 36,
+              y: basePosition.y + index * 28,
+            },
+            data: normalizeNodeHandleData('imageUpload', {
+              label: 'Image Upload',
+              imageUrl: uploadResult.url,
+              assetPath: uploadResult.url,
+              fileName: file.name,
+              ...getNodeHandles('imageUpload', {}),
+              onUpdateNodeData: updateNodeData,
+            }),
+          } satisfies Node<WorkflowNodeData>
+
+          setNodes((nds) => [...nds, newNode])
+        }
+
+        if (uploadedUrls.length > 0) {
+          toast.success(uploadedUrls.length === 1 ? 'Image added to canvas' : `${uploadedUrls.length} images added to canvas`)
+        }
+
+        return
+      }
 
       const nodeType = event.dataTransfer.getData('application/reactflow')
       if (!nodeType) {
@@ -749,8 +894,8 @@ function WorkflowEditorInner() {
       }
 
       const position = screenToFlowPosition({
-        x: event.clientX,
-        y: event.clientY,
+        x: dropX,
+        y: dropY,
       })
 
       const model = MODELS.find(m => m.id === nodeType) || TOOLS.find(t => t.id === nodeType);
@@ -758,7 +903,7 @@ function WorkflowEditorInner() {
         id: `${nodeType}-${Date.now()}`,
         type: nodeType,
         position,
-        data: {
+        data: normalizeNodeHandleData(nodeType, {
           label: model?.title || nodeType,
           ...(nodeType === 'imagen-4.0-generate-001' && {
             prompt: '',
@@ -806,12 +951,12 @@ function WorkflowEditorInner() {
           }),
           ...getNodeHandles(nodeType, {}),
           onUpdateNodeData: updateNodeData,
-        },
+        }),
       } satisfies Node<WorkflowNodeData>
 
       setNodes((nds) => [...nds, newNode])
     },
-    [screenToFlowPosition, setNodes, updateNodeData]
+    [screenToFlowPosition, setNodes, updateNodeData, workflowId]
   )
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: any) => {
@@ -837,7 +982,7 @@ function WorkflowEditorInner() {
         x: Math.random() * 400 + 100,
         y: Math.random() * 400 + 100
       },
-      data: {
+      data: normalizeNodeHandleData(nodeType, {
         label: model?.title || nodeType,
         ...(nodeType === 'imagen-4.0-generate-001' && {
           prompt: '',
@@ -885,7 +1030,7 @@ function WorkflowEditorInner() {
         }),
         ...getNodeHandles(nodeType),
         onUpdateNodeData: updateNodeData,
-      },
+      }),
     } satisfies Node<WorkflowNodeData>
     setNodes((nds) => [...nds, newNode])
   }, [setNodes, updateNodeData])

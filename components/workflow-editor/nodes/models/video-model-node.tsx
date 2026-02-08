@@ -67,6 +67,15 @@ export function VideoModelNode({
         return 'text-sky-300'
     }
 
+    const getHandleLabel = (handle: HandleMeta) => {
+        if (typeof handle.label === 'string' && handle.label.trim().length > 0) {
+            return handle.label
+        }
+        return handle.id
+            .replace(/_/g, ' ')
+            .replace(/\b\w/g, (char) => char.toUpperCase())
+    }
+
     return (
         <NodeContextMenu nodeId={id} type="context">
             <Card className={`relative w-[340px] bg-[#1a1a1a] border-zinc-800 transition-all ${selected ? 'ring-2 ring-primary shadow-2xl scale-[1.02]' : 'shadow-lg'}`}>
@@ -213,7 +222,7 @@ export function VideoModelNode({
                             <div
                                 className={`absolute right-full mr-3 flex items-center gap-2 text-[11px] font-bold tracking-tight uppercase whitespace-nowrap ${getLabelClass(input.type)}`}
                             >
-                                {input.label}{input.required && <span className="text-red-500 ml-0.5">*</span>}
+                                {getHandleLabel(input)}{input.required && <span className="text-red-500 ml-0.5">*</span>}
                             </div>
                             <Handle
                                 type="target"
@@ -236,7 +245,7 @@ export function VideoModelNode({
                             <div
                                 className={`absolute left-full ml-3 flex items-center gap-2 text-[11px] font-bold tracking-tight uppercase whitespace-nowrap ${getLabelClass(output.type)}`}
                             >
-                                {output.label}
+                                {getHandleLabel(output)}
                             </div>
                             <Handle
                                 type="source"

@@ -36,6 +36,15 @@ export const TextInputNode = memo(({ data, selected, id }: NodeProps) => {
       ? 'text-emerald-300'
       : 'text-sky-300'
 
+  const getHandleLabel = (output: { id: string; label: string }) => {
+    if (typeof output.label === 'string' && output.label.trim().length > 0) {
+      return output.label
+    }
+    return output.id
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (char) => char.toUpperCase())
+  }
+
   return (
     <NodeContextMenu nodeId={id} type="context">
       <Card
@@ -80,7 +89,7 @@ export const TextInputNode = memo(({ data, selected, id }: NodeProps) => {
             className={`absolute right-[-64px] flex items-center gap-2 text-xs -translate-y-1/2 ${getLabelClass(output.type)}`}
             style={{ top: getHandleTop(index, outputs.length) }}
           >
-            <span>{output.label}</span>
+            <span>{getHandleLabel(output)}</span>
           </div>
         ))}
 

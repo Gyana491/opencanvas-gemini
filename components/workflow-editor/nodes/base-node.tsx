@@ -71,6 +71,15 @@ export function BaseNode({
         }
     }
 
+    const getHandleLabel = (handle: HandleMeta) => {
+        if (typeof handle.label === 'string' && handle.label.trim().length > 0) {
+            return handle.label
+        }
+        return handle.id
+            .replace(/_/g, ' ')
+            .replace(/\b\w/g, (char) => char.toUpperCase())
+    }
+
     // Handle component
     const HandleDot = ({ type, className }: { type: string, className?: string }) => (
         <div className={cn(
@@ -137,7 +146,7 @@ export function BaseNode({
                                     "absolute right-full mr-3 text-[10px] font-bold tracking-tight uppercase whitespace-nowrap bg-transparent shadow-none border-none p-0",
                                     getLabelColor(input.type)
                                 )}>
-                                    {input.label}
+                                    {getHandleLabel(input)}
                                 </span>
                             </div>
                         </div>
@@ -164,7 +173,7 @@ export function BaseNode({
                                     "absolute left-full ml-3 text-[10px] font-bold tracking-tight uppercase whitespace-nowrap bg-transparent shadow-none border-none p-0",
                                     getLabelColor(output.type)
                                 )}>
-                                    {output.label}
+                                    {getHandleLabel(output)}
                                 </span>
                             </div>
                         </div>

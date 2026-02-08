@@ -310,6 +310,12 @@ export const BlurNode = memo(({ data, selected, id }: NodeProps) => {
                 </div>
 
                 {/* Handles */}
+                <div
+                    className="absolute left-0 -translate-x-full -translate-y-1/2 pr-3 text-[10px] font-bold tracking-tight uppercase text-emerald-300"
+                    style={{ top: '50%' }}
+                >
+                    Image In
+                </div>
                 <Handle
                     type="target"
                     position={Position.Left}
@@ -318,6 +324,12 @@ export const BlurNode = memo(({ data, selected, id }: NodeProps) => {
                     style={{ top: '50%' }}
                 />
 
+                <div
+                    className="absolute right-0 translate-x-full -translate-y-1/2 pl-3 text-[10px] font-bold tracking-tight uppercase text-emerald-300"
+                    style={{ top: '50%' }}
+                >
+                    Image Out
+                </div>
                 <Handle
                     type="source"
                     position={Position.Right}
