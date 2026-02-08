@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useParams, useRouter } from "next/navigation"
@@ -9,6 +9,7 @@ import {
   ReactFlowProvider,
   Background,
   Controls,
+  useEdgesState,
   useNodesState,
   useReactFlow,
   type Edge,
@@ -21,8 +22,10 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { useSession } from "@/lib/auth-client"
 import { workflowNodeTypes } from "@/components/workflow-editor/node-types"
+import { OUTPUT_HANDLE_IDS, TOOL_OUTPUT_HANDLE_IDS } from "@/data/models"
 
 type ShareAccess = "view" | "edit"
+type WorkflowNodeData = Record<string, unknown>
 
 type SharedResponse = {
   id: string
@@ -45,7 +48,11 @@ function ensureObject(value: unknown): Record<string, unknown> {
     : {}
 }
 
-function normalizeNodes(rawNodes: unknown[]): Node[] {
+function getNodeData(node: Node<WorkflowNodeData>): WorkflowNodeData {
+  return ensureObject(node.data) as WorkflowNodeData
+}
+
+function normalizeNodes(rawNodes: unknown[]): Node<WorkflowNodeData>[] {
   return rawNodes.map((item, index) => {
     const node = ensureObject(item)
     const position = ensureObject(node.position)
@@ -62,7 +69,7 @@ function normalizeNodes(rawNodes: unknown[]): Node[] {
         Object.keys(data).length > 0
           ? data
           : { label: typeof node.type === "string" ? node.type : `Node ${index + 1}` },
-    } as Node
+    } as Node<WorkflowNodeData>
   })
 }
 
@@ -91,12 +98,237 @@ function SharedWorkflowInner() {
 
   const workflowId = params.id as string
 
-  const [nodes, setNodes] = useNodesState<Node>([])
-  const [edges, setEdges] = useState<Edge[]>([])
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node<WorkflowNodeData>>([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [workflowName, setWorkflowName] = useState("Shared Workflow")
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState("")
   const [isDuplicating, setIsDuplicating] = useState(false)
+  const graphSignatureRef = useRef("")
+
+  const edgeSignature = useMemo(() => {
+    return JSON.stringify(
+      edges.map((edge) => ({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        sourceHandle: edge.sourceHandle,
+        targetHandle: edge.targetHandle,
+      }))
+    )
+  }, [edges])
+
+  const nodeOutputs = useMemo(() => {
+    return JSON.stringify(
+      nodes.map((node) => {
+        const data = getNodeData(node)
+        return {
+          id: node.id,
+          output: data.output ?? null,
+          imageOutput: data.imageOutput ?? null,
+          maskOutput: data.maskOutput ?? null,
+          videoOutput: data.videoOutput ?? null,
+          imageUrl: data.imageUrl ?? null,
+          videoUrl: data.videoUrl ?? null,
+          assetPath: data.assetPath ?? null,
+          text: data.text ?? null,
+          blurType: data.blurType ?? null,
+          blurSize: data.blurSize ?? null,
+        }
+      })
+    )
+  }, [nodes])
+
+  const graphSignature = useMemo(
+    () => `${edgeSignature}::${nodeOutputs}`,
+    [edgeSignature, nodeOutputs]
+  )
+
+  useEffect(() => {
+    if (graphSignatureRef.current === graphSignature) {
+      return
+    }
+    graphSignatureRef.current = graphSignature
+
+    setNodes((currentNodes) => {
+      return currentNodes.map((node) => {
+        const nodeData = getNodeData(node)
+        const incomingEdges = edges.filter((edge) => edge.target === node.id)
+        const isVeoNode = node.type === "veo-3.1-generate-preview"
+        const connectedData: Record<string, unknown> = {}
+
+        if (isVeoNode) {
+          connectedData.connectedPrompt = ""
+          connectedData.connectedFirstFrame = ""
+          connectedData.connectedLastFrame = ""
+          connectedData.connectedVideo = ""
+          const refImageCount = Number(nodeData.imageInputCount) || 0
+          for (let i = 0; i < refImageCount; i += 1) {
+            connectedData[`connectedRefImage_${i}`] = ""
+          }
+        }
+
+        const resolveSourceImageValue = (sourceNode: Node<WorkflowNodeData>, sourceHandle?: string | null) => {
+          const sourceData = getNodeData(sourceNode)
+
+          if (sourceNode.type === "imageUpload") {
+            return String(sourceData.imageUrl || sourceData.assetPath || "")
+          }
+          if (
+            sourceNode.type === "gemini-2.5-flash-image" ||
+            sourceNode.type === "gemini-3-pro-image-preview" ||
+            sourceNode.type === "imagen-4.0-generate-001"
+          ) {
+            return String(sourceData.output || "")
+          }
+          if (sourceNode.type === "blur" || sourceNode.type === "colorGrading") {
+            return String(sourceData.output || "")
+          }
+          if (sourceNode.type === "crop") {
+            return String(sourceData.imageOutput || "")
+          }
+          if (sourceNode.type === "painter") {
+            if (sourceHandle === TOOL_OUTPUT_HANDLE_IDS.painterMask) {
+              return String(sourceData.maskOutput || "")
+            }
+            return String(sourceData.output || sourceData.imageOutput || "")
+          }
+
+          return String(
+            sourceData.imageOutput ||
+            sourceData.output ||
+            sourceData.imageUrl ||
+            sourceData.assetPath ||
+            ""
+          )
+        }
+
+        incomingEdges.forEach((edge) => {
+          const sourceNode = currentNodes.find((n) => n.id === edge.source)
+          if (!sourceNode) return
+
+          const sourceData = getNodeData(sourceNode)
+          const targetHandle = edge.targetHandle
+          const sourceHandle = edge.sourceHandle
+
+          if (targetHandle === "prompt") {
+            if (sourceNode.type === "textInput") {
+              connectedData.connectedPrompt = String(sourceData.text || "")
+            } else if (sourceData.output) {
+              connectedData.connectedPrompt = String(sourceData.output)
+            }
+            return
+          }
+
+          if (
+            targetHandle === "image" ||
+            targetHandle === "firstFrame" ||
+            targetHandle === "lastFrame" ||
+            targetHandle === "imageOutput" ||
+            targetHandle?.startsWith("image_") ||
+            targetHandle?.startsWith("ref_image_")
+          ) {
+            const sourceImageValue = resolveSourceImageValue(sourceNode, sourceHandle)
+            let dataKey: string
+
+            if ((targetHandle === "image" || targetHandle === "firstFrame") && isVeoNode) {
+              dataKey = "connectedFirstFrame"
+            } else if (targetHandle === "lastFrame" && isVeoNode) {
+              dataKey = "connectedLastFrame"
+            } else if (targetHandle === "image" || targetHandle === "imageOutput") {
+              dataKey = "connectedImage"
+            } else if (targetHandle?.startsWith("ref_image_")) {
+              dataKey = `connectedRefImage_${targetHandle.split("_")[2]}`
+            } else {
+              dataKey = `connectedImage_${targetHandle?.split("_")[1]}`
+            }
+
+            connectedData[dataKey] = sourceImageValue || ""
+            return
+          }
+
+          if (targetHandle === "video" || targetHandle === OUTPUT_HANDLE_IDS.video) {
+            connectedData.connectedVideo = String(
+              sourceData.output ||
+              sourceData.videoUrl ||
+              sourceData.assetPath ||
+              ""
+            )
+          }
+        })
+
+        const hasImageEdge = incomingEdges.some((edge) => {
+          return edge.targetHandle === "image" || edge.targetHandle === "imageOutput"
+        })
+
+        if ((node.type === "blur" || node.type === "colorGrading") && !hasImageEdge) {
+          if (nodeData.connectedImage) {
+            return {
+              ...node,
+              data: {
+                ...nodeData,
+                connectedImage: "",
+                output: null,
+                imageOutput: null,
+                getOutput: null,
+              },
+            }
+          }
+        }
+
+        if (node.type === "crop" && !hasImageEdge) {
+          if (nodeData.connectedImage) {
+            return {
+              ...node,
+              data: {
+                ...nodeData,
+                connectedImage: "",
+                output: null,
+                imageOutput: null,
+                getOutput: null,
+                cropRect: null,
+              },
+            }
+          }
+        }
+
+        if (node.type === "painter" && !hasImageEdge) {
+          if (nodeData.connectedImage) {
+            return {
+              ...node,
+              data: {
+                ...nodeData,
+                connectedImage: "",
+                output: null,
+                imageOutput: null,
+                maskOutput: null,
+                getOutput: null,
+                getMaskOutput: null,
+              },
+            }
+          }
+        }
+
+        if (incomingEdges.length > 0 || isVeoNode) {
+          const hasChanges = Object.keys(connectedData).some((key) => {
+            return nodeData[key] !== connectedData[key]
+          })
+
+          if (hasChanges) {
+            return {
+              ...node,
+              data: {
+                ...nodeData,
+                ...connectedData,
+              },
+            }
+          }
+        }
+
+        return node
+      })
+    })
+  }, [edges, graphSignature, setNodes])
 
   useEffect(() => {
     let cancelled = false
@@ -214,8 +446,8 @@ function SharedWorkflowInner() {
         <ReactFlow
           nodes={nodes}
           edges={edges}
-          onNodesChange={undefined}
-          onEdgesChange={undefined}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
           onConnect={undefined}
           minZoom={0.05}
           maxZoom={10}
