@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ImageModelNode } from './image-model-node'
 import { downloadMedia } from '@/lib/utils/download'
 import { PROVIDERS } from '@/data/providers';
+import { MODELS } from '@/data/models';
 
 const googleProvider = PROVIDERS.find(p => p.id === 'google');
 
@@ -140,11 +141,13 @@ export const Imagen40Generate001Node = memo(({ data, selected, id }: NodeProps) 
         downloadMedia(imageUrl, `imagen-4.0-generate-001-${Date.now()}.png`);
     };
 
+    const model = MODELS.find(m => m.id === 'imagen-4.0-generate-001');
+
     return (
         <ImageModelNode
             id={id}
             selected={selected}
-            title="imagen-4.0-generate-001"
+            title={model?.title || "Imagen 4.0"}
             icon={googleProvider?.logo || ImageIcon}
             iconClassName="bg-white"
             isRunning={isRunning}

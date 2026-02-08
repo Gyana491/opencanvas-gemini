@@ -159,6 +159,38 @@ export function NodeLibrary({ onAddNode, onClose, isOpen, workflowName, onRename
 
           <ScrollArea className="flex-1">
             <div className="p-4 space-y-6">
+              {/* Tools Section */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wider px-1">Tools</h3>
+                <div className="grid grid-cols-1 gap-2">
+                  {TOOLS.map((tool) => {
+                    const Icon = getIcon(tool) as LucideIcon; // Tools use Lucide Icons
+                    return (
+                      <div
+                        key={tool.id}
+                        className="group flex items-center gap-3 p-3 rounded-lg border border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800 hover:border-zinc-700 cursor-grab active:cursor-grabbing transition-all hover:shadow-md"
+                        onDragStart={(event) => onDragStart(event, tool.id, tool.id)}
+                        draggable
+                      >
+                        <div className="w-8 h-8 rounded-md bg-zinc-800 flex items-center justify-center group-hover:bg-zinc-700 transition-colors">
+                          <Icon className="w-4 h-4 text-zinc-100" />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium text-zinc-200 group-hover:text-white transition-colors">
+                            {tool.title}
+                          </span>
+                          <span className="text-[10px] text-zinc-500 group-hover:text-zinc-400">
+                            {tool.category || 'Utility'}
+                          </span>
+                        </div>
+                        <div className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
+                          <GripHorizontal className="w-4 h-4 text-zinc-600" />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
               {/* Models Section */}
               <div className="space-y-3">
                 <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wider px-1">Models</h3>
@@ -196,38 +228,7 @@ export function NodeLibrary({ onAddNode, onClose, isOpen, workflowName, onRename
                 </div>
               </div>
 
-              {/* Tools Section */}
-              <div className="space-y-3">
-                <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wider px-1">Tools</h3>
-                <div className="grid grid-cols-1 gap-2">
-                  {TOOLS.map((tool) => {
-                    const Icon = getIcon(tool) as LucideIcon; // Tools use Lucide Icons
-                    return (
-                      <div
-                        key={tool.id}
-                        className="group flex items-center gap-3 p-3 rounded-lg border border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800 hover:border-zinc-700 cursor-grab active:cursor-grabbing transition-all hover:shadow-md"
-                        onDragStart={(event) => onDragStart(event, tool.id, tool.id)}
-                        draggable
-                      >
-                        <div className="w-8 h-8 rounded-md bg-zinc-800 flex items-center justify-center group-hover:bg-zinc-700 transition-colors">
-                          <Icon className="w-4 h-4 text-zinc-100" />
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium text-zinc-200 group-hover:text-white transition-colors">
-                            {tool.title}
-                          </span>
-                          <span className="text-[10px] text-zinc-500 group-hover:text-zinc-400">
-                            {tool.category || 'Utility'}
-                          </span>
-                        </div>
-                        <div className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
-                          <GripHorizontal className="w-4 h-4 text-zinc-600" />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+
             </div>
           </ScrollArea>
         </motion.div>

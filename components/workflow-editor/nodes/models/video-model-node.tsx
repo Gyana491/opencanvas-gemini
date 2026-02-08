@@ -134,7 +134,7 @@ export function VideoModelNode({
                                         <Icon className="w-12 h-12 opacity-20" />
                                     )}
                                 </div>
-                                <p className="text-xs font-medium tracking-wider uppercase opacity-50">Generate {title}</p>
+                                <p className="text-xs font-medium tracking-wider opacity-50">Generate {title}</p>
                             </div>
                         )}
 
@@ -165,10 +165,10 @@ export function VideoModelNode({
                                     e.stopPropagation();
                                     onAddInput();
                                 }}
-                                className="h-9 px-4 gap-2 border-zinc-700 bg-zinc-800/50 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-all active:scale-95 text-xs font-medium"
+                                className="h-9 px-4 gap-2 border-zinc-700 bg-zinc-800/50 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-all active:scale-95 text-xs font-medium border"
                             >
                                 <Plus className="w-3.5 h-3.5" />
-                                Add reference image
+                                Add Reference Image
                             </Button>
                         ) : (
                             <div />
@@ -211,7 +211,7 @@ export function VideoModelNode({
                             style={{ top: getHandleTop(index, inputs.length) }}
                         >
                             <div
-                                className={`absolute right-full mr-3 flex items-center gap-2 text-[11px] font-bold tracking-tight uppercase whitespace-nowrap transition-opacity ${getLabelClass(input.type)} ${!videoUrl && !selected ? 'opacity-40' : 'opacity-100'}`}
+                                className={`absolute right-full mr-3 flex items-center gap-2 text-[11px] font-bold tracking-tight uppercase whitespace-nowrap ${getLabelClass(input.type)}`}
                             >
                                 {input.label}{input.required && <span className="text-red-500 ml-0.5">*</span>}
                             </div>
@@ -234,7 +234,7 @@ export function VideoModelNode({
                             style={{ top: getHandleTop(index, outputs.length) }}
                         >
                             <div
-                                className={`absolute left-full ml-3 flex items-center gap-2 text-[11px] font-bold tracking-tight uppercase whitespace-nowrap transition-opacity ${getLabelClass(output.type)} ${!videoUrl && !selected ? 'opacity-40' : 'opacity-100'}`}
+                                className={`absolute left-full ml-3 flex items-center gap-2 text-[11px] font-bold tracking-tight uppercase whitespace-nowrap ${getLabelClass(output.type)}`}
                             >
                                 {output.label}
                             </div>

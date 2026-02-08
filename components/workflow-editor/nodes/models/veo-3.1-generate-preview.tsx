@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { VideoModelNode } from './video-model-node'
 import { resolveImageInput } from '@/lib/utils/image-processing'
 import { downloadMedia } from '@/lib/utils/download'
+import { MODELS } from '@/data/models';
 
 const inputSchema = z.object({
     prompt: z.string().min(1, 'Prompt is required'),
@@ -322,11 +323,14 @@ export const Veo31GeneratePreviewNode = memo(({ data, selected, id }: NodeProps)
         downloadMedia(videoUrl, `veo-3.1-generate-preview-${Date.now()}.mp4`);
     };
 
+
+    const model = MODELS.find(m => m.id === 'veo-3.1-generate-preview');
+
     return (
         <VideoModelNode
             id={id}
             selected={selected}
-            title="veo-3.1-generate-preview"
+            title={model?.title || "Veo 3.1"}
             icon={Video}
             iconClassName="bg-gradient-to-br from-violet-500 to-indigo-500"
             isRunning={isRunning}

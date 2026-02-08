@@ -13,7 +13,7 @@ import { ImageModelNode } from './image-model-node'
 import { resolveImageInput } from '@/lib/utils/image-processing'
 import { downloadMedia } from '@/lib/utils/download'
 import { uploadToR2 } from '@/lib/utils/upload'
-
+import { MODELS } from '@/data/models';
 import { PROVIDERS } from '@/data/providers';
 
 const googleProvider = PROVIDERS.find(p => p.id === 'google');
@@ -209,11 +209,13 @@ export const Gemini25FlashImageNode = memo(({ data, selected, id }: NodeProps) =
         downloadMedia(output, `gemini-2.5-flash-image-${Date.now()}.png`);
     };
 
+    const model = MODELS.find(m => m.id === 'gemini-2.5-flash-image');
+
     return (
         <ImageModelNode
             id={id}
             selected={selected}
-            title="gemini-2.5-flash-image"
+            title={model?.title || "Nano Banana"}
             icon={googleProvider?.logo || ImageIcon}
             iconClassName="bg-white"
             isRunning={isRunning}
