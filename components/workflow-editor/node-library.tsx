@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
-import { Search, Sparkles, Zap, Eye, Box, Video, X, FileText, Image as ImageIcon, GripHorizontal, LucideIcon, StickyNote, ScanText, GitMerge } from "lucide-react"
+import { Search, Sparkles, Zap, Eye, Box, Video, X, FileText, Image as ImageIcon, GripHorizontal, LucideIcon, StickyNote, ScanText, GitMerge, Film } from "lucide-react"
 import { motion, AnimatePresence } from "motion/react"
 import { MODELS, Model } from "@/data/models"
 import { TOOLS, Tool } from "@/data/tools"
@@ -45,11 +45,15 @@ const getIcon = (item: Model | Tool) => {
   if ('category' in item && item.category === 'input') {
     if (item.id === 'textInput') return FileText;
     if (item.id === 'stickyNote') return StickyNote;
+    if (item.id === 'videoUpload') return Video;
     return ImageIcon;
   }
   if (item.id === 'promptEnhancer') return Sparkles;
   if (item.id === 'imageDescriber') return ScanText;
+  if (item.id === 'videoDescriber') return ScanText;
   if (item.id === 'promptConcatenator') return GitMerge;
+  if (item.id === 'extractVideoFrame') return Film;
+  if (item.id === 'imageCompositor') return Box;
   if (item.id === 'google-search') return Search;
 
   return ImageIcon;
@@ -58,10 +62,14 @@ const getIcon = (item: Model | Tool) => {
 const getColor = (item: Model | Tool) => {
   if (item.id === 'textInput') return 'text-blue-500';
   if (item.id === 'imageUpload') return 'text-purple-500';
+  if (item.id === 'videoUpload') return 'text-violet-500';
   if (item.id === 'stickyNote') return 'text-amber-500';
   if (item.id === 'imageDescriber') return 'text-fuchsia-500';
+  if (item.id === 'videoDescriber') return 'text-violet-500';
   if (item.id === 'promptEnhancer') return 'text-pink-500';
   if (item.id === 'promptConcatenator') return 'text-fuchsia-500';
+  if (item.id === 'extractVideoFrame') return 'text-emerald-500';
+  if (item.id === 'imageCompositor') return 'text-emerald-500';
   if (item.id === 'gemini-2.5-flash-image') return 'text-orange-500';
   if (item.id === 'gemini-3-pro-image-preview') return 'text-pink-500';
   if (item.id === 'veo-3.1-generate-preview') return 'text-violet-500';

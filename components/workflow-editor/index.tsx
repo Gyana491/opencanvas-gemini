@@ -53,6 +53,7 @@ import { PaneContextMenu } from './pane-context-menu'
 import { uploadToR2 } from '@/lib/utils/upload'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { DEFAULT_IMAGE_DESCRIBER_SYSTEM_INSTRUCTION } from './nodes/tools/image-describer-node'
+import { DEFAULT_VIDEO_DESCRIBER_SYSTEM_INSTRUCTION } from './nodes/tools/video-describer-node'
 import { DEFAULT_PROMPT_ENHANCER_SYSTEM_INSTRUCTION } from './nodes/tools/prompt-enhancer-node'
 
 const NODES_WITH_PROPERTIES = [
@@ -61,6 +62,7 @@ const NODES_WITH_PROPERTIES = [
   'gemini-3-pro-image-preview',
   'veo-3.1-generate-preview',
   'imageDescriber',
+  'videoDescriber',
   'promptEnhancer',
 ]
 
@@ -101,6 +103,14 @@ const EDGE_COLORS = {
 const EDGE_STROKE_WIDTH = 2.5
 const EDGE_MARKER_SIZE = 16
 const EDGE_INTERACTION_WIDTH = 28
+const MAX_VIDEO_FILE_SIZE_BYTES = 200 * 1024 * 1024
+
+function canonicalizeNodeType(nodeType: string | undefined): string | undefined {
+  if (nodeType === 'imageEditor') {
+    return 'imageCompositor'
+  }
+  return nodeType
+}
 
 function getKindFromSourceHandle(sourceHandle?: string | null): HandleKind | null {
   if (!sourceHandle) {
@@ -214,7 +224,7 @@ function normalizeHandleList(rawHandles: unknown, direction: 'input' | 'output')
   })
 }
 
-const RUNTIME_ONLY_TOOL_NODE_TYPES = new Set(['blur', 'colorGrading', 'crop', 'painter'])
+const RUNTIME_ONLY_TOOL_NODE_TYPES = new Set(['blur', 'colorGrading', 'crop', 'painter', 'extractVideoFrame', 'imageCompositor'])
 
 function stripRuntimeDataFromNodeData<T extends Record<string, unknown>>(nodeType: string | undefined, data: T): T {
   const cleaned: Record<string, unknown> = {}
@@ -260,6 +270,8 @@ function stripRuntimeDataFromNodeData<T extends Record<string, unknown>>(nodeTyp
 }
 
 function getNodeHandles(nodeType: string | undefined, data?: any): NodeHandleMeta {
+  const normalizedNodeType = canonicalizeNodeType(nodeType)
+  nodeType = normalizedNodeType
   if (!nodeType) return { inputs: [], outputs: [] }
 
   const model = MODELS.find(m => m.id === nodeType) || TOOLS.find(t => t.id === nodeType);
@@ -319,6 +331,22 @@ function getNodeHandles(nodeType: string | undefined, data?: any): NodeHandleMet
         allowedSourceIds: [OUTPUT_HANDLE_IDS.text],
       });
     }
+  } else if (nodeType === 'imageCompositor') {
+    const layerCount = Math.max(1, Number(data?.layerCount || 2))
+    inputs.push({
+      id: 'background',
+      label: 'Background',
+      type: 'image',
+      allowedSourceIds: [OUTPUT_HANDLE_IDS.image],
+    })
+    for (let i = 0; i < layerCount; i++) {
+      inputs.push({
+        id: `image_${i}`,
+        label: `Layer ${i + 1}`,
+        type: 'image',
+        allowedSourceIds: [OUTPUT_HANDLE_IDS.image],
+      })
+    }
   }
 
   return {
@@ -328,14 +356,15 @@ function getNodeHandles(nodeType: string | undefined, data?: any): NodeHandleMet
 }
 
 function normalizeNodeHandleData(nodeType: string | undefined, data: unknown): WorkflowNodeData {
+  const normalizedNodeType = canonicalizeNodeType(nodeType)
   const safeData = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
-  const defaults = getNodeHandles(nodeType, safeData)
+  const defaults = getNodeHandles(normalizedNodeType, safeData)
   const inputs = normalizeHandleList(safeData.inputs ?? defaults.inputs ?? [], 'input')
   const outputs = normalizeHandleList(safeData.outputs ?? defaults.outputs ?? [], 'output')
-  const model = MODELS.find((m) => m.id === nodeType) || TOOLS.find((t) => t.id === nodeType)
+  const model = MODELS.find((m) => m.id === normalizedNodeType) || TOOLS.find((t) => t.id === normalizedNodeType)
   const label = typeof safeData.label === 'string' && safeData.label.trim().length > 0
     ? safeData.label
-    : model?.title || nodeType || 'Node'
+    : model?.title || normalizedNodeType || 'Node'
 
   return {
     ...(safeData as WorkflowNodeData),
@@ -442,11 +471,13 @@ function WorkflowEditorInner() {
 
             setWorkflowName(workflow.name)
             const sanitizedLoadedNodes = ((loadedNodes || []) as Node<WorkflowNodeData>[]).map((node) => {
+              const normalizedType = canonicalizeNodeType(node.type)
               const rawData = (node.data || {}) as Record<string, unknown>
-              const normalizedData = normalizeNodeHandleData(node.type, rawData)
+              const normalizedData = normalizeNodeHandleData(normalizedType, rawData)
               return {
                 ...node,
-                data: stripRuntimeDataFromNodeData(node.type, normalizedData),
+                type: normalizedType,
+                data: stripRuntimeDataFromNodeData(normalizedType, normalizedData),
               }
             })
 
@@ -827,8 +858,14 @@ function WorkflowEditorInner() {
       id: n.id,
       output: n.data.output,
       imageOutput: n.data.imageOutput,
+      videoUrl: n.data.videoUrl,
+      videoBlobUrl: n.data.videoBlobUrl,
       maskOutput: n.data.maskOutput,
       imageUrl: n.data.imageUrl,
+      playheadTime: n.data.playheadTime,
+      videoDurationSeconds: n.data.videoDurationSeconds,
+      videoFps: n.data.videoFps,
+      videoFrameIndex: n.data.videoFrameIndex,
       text: n.data.text,
       blurType: n.data.blurType,
       blurSize: n.data.blurSize
@@ -846,6 +883,8 @@ function WorkflowEditorInner() {
       const updatedNodes = currentNodes.map((node) => {
         const incomingEdges = edges.filter((edge) => edge.target === node.id)
         const isVeoNode = node.type === 'veo-3.1-generate-preview'
+        const isExtractVideoFrameNode = node.type === 'extractVideoFrame'
+        const isImageCompositorNode = node.type === 'imageCompositor'
 
         const connectedData: Record<string, any> = {}
         if (isVeoNode) {
@@ -856,6 +895,21 @@ function WorkflowEditorInner() {
           const refImageCount = Number(node.data.imageInputCount) || 0
           for (let i = 0; i < refImageCount; i++) {
             connectedData[`connectedRefImage_${i}`] = ''
+          }
+        }
+        if (isExtractVideoFrameNode) {
+          connectedData.connectedVideo = ''
+          connectedData.connectedVideoBlob = ''
+          connectedData.connectedVideoCurrentTime = 0
+          connectedData.connectedVideoDuration = 0
+          connectedData.connectedVideoFps = 24
+          connectedData.connectedVideoFrameIndex = 0
+        }
+        if (isImageCompositorNode) {
+          connectedData.connectedBackground = ''
+          const layerCount = Math.max(1, Number(node.data.layerCount) || 2)
+          for (let i = 0; i < layerCount; i++) {
+            connectedData[`connectedImage_${i}`] = ''
           }
         }
 
@@ -896,6 +950,7 @@ function WorkflowEditorInner() {
               connectedData.connectedPrompt = sourceNode.data.output
             }
           } else if (
+            targetHandle === 'background' ||
             targetHandle === 'image' ||
             targetHandle === 'firstFrame' ||
             targetHandle === 'lastFrame' ||
@@ -910,6 +965,8 @@ function WorkflowEditorInner() {
               dataKey = 'connectedFirstFrame'
             } else if (targetHandle === 'lastFrame' && isVeoNode) {
               dataKey = 'connectedLastFrame'
+            } else if (targetHandle === 'background') {
+              dataKey = 'connectedBackground'
             } else if (targetHandle === 'image' || targetHandle === 'imageOutput') {
               dataKey = 'connectedImage'
             } else if (targetHandle?.startsWith('ref_image_')) {
@@ -925,6 +982,28 @@ function WorkflowEditorInner() {
               sourceNode.data.videoUrl ||
               sourceNode.data.assetPath ||
               ''
+            connectedData.connectedVideoBlob =
+              (typeof sourceNode.data.videoBlobUrl === 'string' && sourceNode.data.videoBlobUrl.startsWith('blob:'))
+                ? sourceNode.data.videoBlobUrl
+                : (typeof sourceNode.data.output === 'string' && sourceNode.data.output.startsWith('blob:'))
+                  ? sourceNode.data.output
+                  : ''
+            connectedData.connectedVideoCurrentTime =
+              typeof sourceNode.data.playheadTime === 'number' && Number.isFinite(sourceNode.data.playheadTime)
+                ? sourceNode.data.playheadTime
+                : 0
+            connectedData.connectedVideoDuration =
+              typeof sourceNode.data.videoDurationSeconds === 'number' && Number.isFinite(sourceNode.data.videoDurationSeconds)
+                ? sourceNode.data.videoDurationSeconds
+                : 0
+            connectedData.connectedVideoFps =
+              typeof sourceNode.data.videoFps === 'number' && Number.isFinite(sourceNode.data.videoFps)
+                ? sourceNode.data.videoFps
+                : 24
+            connectedData.connectedVideoFrameIndex =
+              typeof sourceNode.data.videoFrameIndex === 'number' && Number.isFinite(sourceNode.data.videoFrameIndex)
+                ? sourceNode.data.videoFrameIndex
+                : 0
           }
         })
 
@@ -984,7 +1063,7 @@ function WorkflowEditorInner() {
         }
 
         // Only update if there are connected data changes
-        if (incomingEdges.length > 0 || isVeoNode) {
+        if (incomingEdges.length > 0 || isVeoNode || isExtractVideoFrameNode || isImageCompositorNode) {
           const hasChanges = Object.keys(connectedData).some(
             (key) => node.data[key] !== connectedData[key]
           )
@@ -1207,33 +1286,57 @@ function WorkflowEditorInner() {
       const dropY = event.clientY
       const files = Array.from(event.dataTransfer.files || [])
       const imageFiles = files.filter((file) => file.type.startsWith('image/'))
+      const videoFiles = files.filter((file) => file.type.startsWith('video/'))
+      const oversizedVideoFiles = videoFiles.filter((file) => file.size > MAX_VIDEO_FILE_SIZE_BYTES)
+      const validVideoFiles = videoFiles.filter((file) => file.size <= MAX_VIDEO_FILE_SIZE_BYTES)
+      const mediaFiles = [...imageFiles, ...validVideoFiles]
 
-      if (imageFiles.length > 0) {
+      if (oversizedVideoFiles.length > 0) {
+        toast.error(
+          oversizedVideoFiles.length === 1
+            ? `"${oversizedVideoFiles[0].name}" exceeds 200MB and was skipped.`
+            : `${oversizedVideoFiles.length} videos exceeded 200MB and were skipped.`
+        )
+      }
+
+      if (mediaFiles.length > 0) {
         if (!workflowId || workflowId === 'new') {
-          toast.error('Please wait for the workflow to be ready before dropping images.')
+          toast.error('Please wait for the workflow to be ready before dropping files.')
           return
         }
 
         const basePosition = screenToFlowPosition({ x: dropX, y: dropY })
-        for (let index = 0; index < imageFiles.length; index += 1) {
-          const file = imageFiles[index]
-          const nodeId = `imageUpload-${Date.now()}-${index}`
+        for (let index = 0; index < mediaFiles.length; index += 1) {
+          const file = mediaFiles[index]
+          const isVideo = file.type.startsWith('video/')
+          const localVideoBlobUrl = isVideo ? URL.createObjectURL(file) : ''
+          const nodeType = isVideo ? 'videoUpload' : 'imageUpload'
+          const nodeId = `${nodeType}-${Date.now()}-${index}`
 
           const newNode = {
             id: nodeId,
-            type: 'imageUpload',
+            type: nodeType,
             position: {
               x: basePosition.x + index * 36,
               y: basePosition.y + index * 28,
             },
-            data: normalizeNodeHandleData('imageUpload', {
-              label: 'Image Upload',
-              imageUrl: '',
-              assetPath: '',
+            data: normalizeNodeHandleData(nodeType, {
+              label: isVideo ? 'Video Upload' : 'Image Upload',
+              ...(isVideo
+                ? {
+                  videoBlobUrl: localVideoBlobUrl,
+                  videoUrl: localVideoBlobUrl,
+                  output: localVideoBlobUrl,
+                  assetPath: localVideoBlobUrl,
+                }
+                : {
+                  imageUrl: '',
+                }),
+              ...(!isVideo ? { assetPath: '' } : {}),
               fileName: file.name,
               isUploading: true,
               uploadError: '',
-              ...getNodeHandles('imageUpload', {}),
+              ...getNodeHandles(nodeType, {}),
               onUpdateNodeData: updateNodeData,
             }),
           } satisfies Node<WorkflowNodeData>
@@ -1247,8 +1350,10 @@ function WorkflowEditorInner() {
 
             if (!uploadResult.success || !uploadResult.url) {
               updateNodeData(nodeId, {
-                imageUrl: '',
-                assetPath: '',
+                ...(isVideo
+                  ? { videoUrl: localVideoBlobUrl, videoBlobUrl: localVideoBlobUrl, output: localVideoBlobUrl, assetPath: localVideoBlobUrl }
+                  : { imageUrl: '' }),
+                ...(isVideo ? {} : { assetPath: '' }),
                 isUploading: false,
                 uploadError: uploadResult.error || 'Upload failed',
               })
@@ -1257,7 +1362,9 @@ function WorkflowEditorInner() {
             }
 
             updateNodeData(nodeId, {
-              imageUrl: uploadResult.url,
+              ...(isVideo
+                ? { videoUrl: uploadResult.url, videoBlobUrl: localVideoBlobUrl, output: uploadResult.url }
+                : { imageUrl: uploadResult.url }),
               assetPath: uploadResult.url,
               fileName: file.name,
               isUploading: false,
@@ -1266,7 +1373,14 @@ function WorkflowEditorInner() {
           })()
         }
 
-        toast.success(imageFiles.length === 1 ? 'Image added to canvas' : `${imageFiles.length} images added to canvas`)
+        const messages: string[] = []
+        if (imageFiles.length > 0) {
+          messages.push(imageFiles.length === 1 ? '1 image' : `${imageFiles.length} images`)
+        }
+        if (validVideoFiles.length > 0) {
+          messages.push(validVideoFiles.length === 1 ? '1 video' : `${validVideoFiles.length} videos`)
+        }
+        toast.success(`${messages.join(' and ')} added to canvas`)
 
         return
       }
@@ -1298,6 +1412,28 @@ function WorkflowEditorInner() {
             imageUrl: '',
             fileName: '',
           }),
+          ...(nodeType === 'videoUpload' && {
+            videoUrl: '',
+            videoBlobUrl: '',
+            output: '',
+            fileName: '',
+            playheadTime: 0,
+            videoDurationSeconds: 0,
+            videoFps: 24,
+            videoFrameIndex: 0,
+          }),
+          ...(nodeType === 'extractVideoFrame' && {
+            output: '',
+            imageOutput: '',
+            connectedVideo: '',
+            connectedVideoBlob: '',
+            connectedVideoCurrentTime: 0,
+            currentTime: 0,
+            durationSeconds: 0,
+            fps: 24,
+            frameIndex: 0,
+            timecode: '00:00:00',
+          }),
           ...(nodeType === 'stickyNote' && {
             note: '',
             noteColor: 'yellow',
@@ -1307,6 +1443,12 @@ function WorkflowEditorInner() {
             output: '',
             model: 'gemini-2.5-flash',
             systemInstruction: DEFAULT_IMAGE_DESCRIBER_SYSTEM_INSTRUCTION,
+          }),
+          ...(nodeType === 'videoDescriber' && {
+            output: '',
+            model: 'gemini-2.5-flash',
+            prompt: '',
+            systemInstruction: DEFAULT_VIDEO_DESCRIBER_SYSTEM_INSTRUCTION,
           }),
           ...(nodeType === 'promptEnhancer' && {
             output: '',
@@ -1318,6 +1460,15 @@ function WorkflowEditorInner() {
             output: '',
             additionalText: '',
             inputCount: 2,
+          }),
+          ...(nodeType === 'imageCompositor' && {
+            output: '',
+            imageOutput: '',
+            layerCount: 2,
+            canvasWidth: 960,
+            canvasHeight: 960,
+            backgroundColor: 'transparent',
+            connectedBackground: '',
           }),
           ...(nodeType === 'gemini-2.5-flash-image' && {
             prompt: '',
@@ -1406,6 +1557,28 @@ function WorkflowEditorInner() {
           imageUrl: '',
           fileName: '',
         }),
+        ...(nodeType === 'videoUpload' && {
+          videoUrl: '',
+          videoBlobUrl: '',
+          output: '',
+          fileName: '',
+          playheadTime: 0,
+          videoDurationSeconds: 0,
+          videoFps: 24,
+          videoFrameIndex: 0,
+        }),
+        ...(nodeType === 'extractVideoFrame' && {
+          output: '',
+          imageOutput: '',
+          connectedVideo: '',
+          connectedVideoBlob: '',
+          connectedVideoCurrentTime: 0,
+          currentTime: 0,
+          durationSeconds: 0,
+          fps: 24,
+          frameIndex: 0,
+          timecode: '00:00:00',
+        }),
         ...(nodeType === 'stickyNote' && {
           note: '',
           noteColor: 'yellow',
@@ -1415,6 +1588,12 @@ function WorkflowEditorInner() {
           output: '',
           model: 'gemini-2.5-flash',
           systemInstruction: DEFAULT_IMAGE_DESCRIBER_SYSTEM_INSTRUCTION,
+        }),
+        ...(nodeType === 'videoDescriber' && {
+          output: '',
+          model: 'gemini-2.5-flash',
+          prompt: '',
+          systemInstruction: DEFAULT_VIDEO_DESCRIBER_SYSTEM_INSTRUCTION,
         }),
         ...(nodeType === 'promptEnhancer' && {
           output: '',
@@ -1426,6 +1605,15 @@ function WorkflowEditorInner() {
           output: '',
           additionalText: '',
           inputCount: 2,
+        }),
+        ...(nodeType === 'imageCompositor' && {
+          output: '',
+          imageOutput: '',
+          layerCount: 2,
+          canvasWidth: 960,
+          canvasHeight: 960,
+          backgroundColor: 'transparent',
+          connectedBackground: '',
         }),
         ...(nodeType === 'gemini-2.5-flash-image' && {
           prompt: '',

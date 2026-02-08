@@ -529,6 +529,16 @@ export const Veo31GeneratePreviewNode = memo(({ data, selected, id }: NodeProps)
         downloadMedia(videoUrl, `veo-3.1-generate-preview-${Date.now()}.mp4`);
     };
 
+    const handlePlaybackTimeChange = (currentTime: number, duration: number) => {
+        if (!data?.onUpdateNodeData || typeof data.onUpdateNodeData !== 'function') return;
+        const fps = 24;
+        (data.onUpdateNodeData as (id: string, data: any) => void)(id, {
+            playheadTime: currentTime,
+            videoDurationSeconds: duration,
+            videoFps: fps,
+            videoFrameIndex: Math.max(0, Math.floor(currentTime * fps)),
+        });
+    };
 
     const model = MODELS.find(m => m.id === 'veo-3.1-generate-preview');
 
@@ -545,6 +555,8 @@ export const Veo31GeneratePreviewNode = memo(({ data, selected, id }: NodeProps)
             progress={progress}
             onRun={handleRun}
             onDownload={handleDownload}
+            playbackTime={typeof data?.playheadTime === 'number' ? data.playheadTime : undefined}
+            onPlaybackTimeChange={handlePlaybackTimeChange}
             onAddInput={imageInputCount < 3 ? handleAddInput : undefined}
             inputs={inputs}
             outputs={outputs}

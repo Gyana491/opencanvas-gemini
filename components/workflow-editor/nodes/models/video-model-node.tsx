@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useRef } from 'react'
 import { Handle, Position } from '@xyflow/react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -26,6 +27,8 @@ interface VideoModelNodeProps {
     onRun: () => void
     onDownload?: () => void
     onAddInput?: () => void
+    playbackTime?: number
+    onPlaybackTimeChange?: (currentTime: number, duration: number) => void
     inputs?: HandleMeta[]
     outputs?: HandleMeta[]
 }
@@ -43,9 +46,12 @@ export function VideoModelNode({
     onRun,
     onDownload,
     onAddInput,
+    playbackTime,
+    onPlaybackTimeChange,
     inputs = [],
     outputs = []
 }: VideoModelNodeProps) {
+    const videoRef = useRef<HTMLVideoElement>(null)
 
     const getHandleTop = (index: number, total: number) => {
         if (total <= 1) return '50%'
@@ -74,6 +80,24 @@ export function VideoModelNode({
         return handle.id
             .replace(/_/g, ' ')
             .replace(/\b\w/g, (char) => char.toUpperCase())
+    }
+
+    useEffect(() => {
+        const video = videoRef.current
+        if (!video) return
+        if (typeof playbackTime !== 'number' || !Number.isFinite(playbackTime)) return
+        const current = Number.isFinite(video.currentTime) ? video.currentTime : 0
+        if (Math.abs(current - playbackTime) > 0.05) {
+            video.currentTime = playbackTime
+        }
+    }, [playbackTime])
+
+    const emitPlaybackChange = () => {
+        const video = videoRef.current
+        if (!video || !onPlaybackTimeChange) return
+        const current = Number.isFinite(video.currentTime) ? video.currentTime : 0
+        const duration = Number.isFinite(video.duration) ? video.duration : 0
+        onPlaybackTimeChange(current, duration)
     }
 
     return (
@@ -125,11 +149,15 @@ export function VideoModelNode({
                         {videoUrl ? (
                             <div className="relative w-full h-full p-2 animate-in fade-in duration-500 flex items-center justify-center">
                                 <video
+                                    ref={videoRef}
                                     src={videoUrl}
                                     controls
                                     crossOrigin="anonymous"
                                     className="max-w-full max-h-full object-contain rounded-lg shadow-2xl bg-black"
                                     style={{ maxHeight: '480px' }}
+                                    onLoadedMetadata={emitPlaybackChange}
+                                    onTimeUpdate={emitPlaybackChange}
+                                    onSeeked={emitPlaybackChange}
                                 >
                                     Your browser does not support the video tag.
                                 </video>

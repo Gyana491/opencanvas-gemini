@@ -22,6 +22,61 @@ type WorkflowGraphData = {
     viewport?: unknown
 }
 
+const NULLABLE_STRINGISH_NODE_DATA_KEYS = new Set([
+    'output',
+    'imageOutput',
+    'videoOutput',
+    'maskOutput',
+    'imageUrl',
+    'videoUrl',
+    'audioUrl',
+    'assetPath',
+    'fileName',
+    'prompt',
+    'text',
+    'note',
+    'timecode',
+])
+
+function sanitizeNodeDataForValidation(rawData: unknown): unknown {
+    if (!rawData || typeof rawData !== 'object' || Array.isArray(rawData)) {
+        return rawData
+    }
+
+    const dataRecord = rawData as Record<string, unknown>
+    const sanitized: Record<string, unknown> = {}
+
+    for (const [key, value] of Object.entries(dataRecord)) {
+        if (value !== null) {
+            sanitized[key] = value
+            continue
+        }
+
+        const shouldCoerceToString =
+            NULLABLE_STRINGISH_NODE_DATA_KEYS.has(key) ||
+            key.startsWith('connected') ||
+            key.endsWith('Output') ||
+            key.endsWith('Url') ||
+            key.endsWith('Path')
+
+        sanitized[key] = shouldCoerceToString ? '' : value
+    }
+
+    return sanitized
+}
+
+function sanitizeNodeForValidation(rawNode: unknown): unknown {
+    if (!rawNode || typeof rawNode !== 'object' || Array.isArray(rawNode)) {
+        return rawNode
+    }
+
+    const nodeRecord = rawNode as Record<string, unknown>
+    return {
+        ...nodeRecord,
+        data: sanitizeNodeDataForValidation(nodeRecord.data),
+    }
+}
+
 interface ExportDialogProps {
     isOpen: boolean
     onClose: () => void
@@ -35,7 +90,7 @@ function normalizeWorkflowData(data: WorkflowGraphData): {
     edges: unknown[]
     viewport: Viewport
 } {
-    const nodes = Array.isArray(data?.nodes) ? data.nodes : []
+    const nodes = Array.isArray(data?.nodes) ? data.nodes.map(sanitizeNodeForValidation) : []
     const edges = Array.isArray(data?.edges) ? data.edges : []
 
     const rawViewport = data?.viewport as Record<string, unknown> | undefined

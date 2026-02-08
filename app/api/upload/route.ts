@@ -3,6 +3,8 @@ import { auth } from "@/lib/auth";
 import { uploadFile } from "@/lib/r2";
 import { nanoid } from "nanoid";
 
+const MAX_VIDEO_UPLOAD_BYTES = 200 * 1024 * 1024;
+
 export async function POST(req: NextRequest) {
     // Check authentication
     const session = await auth.api.getSession({
@@ -21,6 +23,14 @@ export async function POST(req: NextRequest) {
 
         if (!file) {
             return NextResponse.json({ error: "No file provided" }, { status: 400 });
+        }
+
+        const isVideo = file.type.startsWith("video/");
+        if (isVideo && file.size > MAX_VIDEO_UPLOAD_BYTES) {
+            return NextResponse.json(
+                { error: "Video file must be 200MB or smaller." },
+                { status: 400 }
+            );
         }
 
         const buffer = Buffer.from(await file.arrayBuffer());

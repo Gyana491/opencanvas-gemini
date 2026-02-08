@@ -42,6 +42,20 @@ export const TOOLS: Tool[] = [
         ],
     },
     {
+        id: 'videoUpload',
+        name: 'Video Upload',
+        title: 'Video Upload',
+        description: 'Upload videos (max 200MB)',
+        category: 'input',
+        outputs: [
+            {
+                id: OUTPUT_HANDLE_IDS.video,
+                label: 'Video',
+                type: 'video',
+            },
+        ],
+    },
+    {
         id: 'stickyNote',
         name: 'Sticky Note',
         title: 'Sticky Note',
@@ -54,6 +68,29 @@ export const TOOLS: Tool[] = [
         title: 'Image Describer',
         description: 'Generate text descriptions from one or more input images',
         category: 'media',
+        outputs: [
+            {
+                id: OUTPUT_HANDLE_IDS.text,
+                label: 'Text',
+                type: 'text',
+            },
+        ],
+    },
+    {
+        id: 'videoDescriber',
+        name: 'Video Describer',
+        title: 'Video Describer',
+        description: 'Generate text descriptions from connected video input',
+        category: 'media',
+        inputs: [
+            {
+                id: 'video',
+                label: 'Video',
+                type: 'video',
+                required: true,
+                allowedSourceIds: [OUTPUT_HANDLE_IDS.video],
+            },
+        ],
         outputs: [
             {
                 id: OUTPUT_HANDLE_IDS.text,
@@ -96,6 +133,43 @@ export const TOOLS: Tool[] = [
                 id: OUTPUT_HANDLE_IDS.text,
                 label: 'Combined Prompt',
                 type: 'text',
+            },
+        ],
+    },
+    {
+        id: 'extractVideoFrame',
+        name: 'Extract Video Frame',
+        title: 'Extract Video Frame',
+        description: 'Extract a live frame image from a connected video input',
+        category: 'media',
+        inputs: [
+            {
+                id: 'video',
+                label: 'Video',
+                type: 'video',
+                required: true,
+                allowedSourceIds: [OUTPUT_HANDLE_IDS.video],
+            },
+        ],
+        outputs: [
+            {
+                id: OUTPUT_HANDLE_IDS.image,
+                label: 'Frame',
+                type: 'image',
+            },
+        ],
+    },
+    {
+        id: 'imageCompositor',
+        name: 'Image Compositor',
+        title: 'Image Compositor',
+        description: 'Layer, move, resize, rotate, flip and blend connected images in one canvas',
+        category: 'media',
+        outputs: [
+            {
+                id: OUTPUT_HANDLE_IDS.image,
+                label: 'Output',
+                type: 'image',
             },
         ],
     },
