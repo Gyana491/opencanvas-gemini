@@ -22,7 +22,7 @@ import {
   MarkerType,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Activity, Download, Loader2, Share2 } from 'lucide-react'
+import { Activity, Download, Loader2, Share2, Undo2, Redo2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { toPng } from 'html-to-image'
 
@@ -46,6 +46,7 @@ import { NodeLibrary } from './node-library'
 import { NodeProperties } from './node-properties'
 import { workflowNodeTypes } from './node-types'
 import { useWorkflow } from './hooks/use-workflow'
+import { useUndoRedo } from './hooks/use-undo-redo'
 import { MODELS, OUTPUT_HANDLE_IDS, TOOL_OUTPUT_HANDLE_IDS } from '@/data/models'
 import { TOOLS } from '@/data/tools'
 import { PaneContextMenu } from './pane-context-menu'
@@ -347,6 +348,9 @@ function WorkflowEditorInner() {
 
   const { createWorkflow, loadWorkflow, saveWorkflow, renameWorkflow, deleteWorkflow, duplicateWorkflow, isLoading } = useWorkflow()
 
+  // Undo/Redo functionality (client-side only)
+  const { takeSnapshot, undo, redo, clearHistory, canUndo, canRedo } = useUndoRedo()
+
   // Auto-save timer ref
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
   const AUTO_SAVE_DELAY = 2000 // 2 seconds
@@ -609,6 +613,93 @@ function WorkflowEditorInner() {
       }))
     )
   }, [isAnimated, setEdges])
+
+  // Keyboard shortcuts for Undo/Redo
+  const handleUndo = useCallback(() => {
+    if (canUndo) {
+      undo(setNodes as any, setEdges as any, nodes, edges)
+    }
+  }, [canUndo, undo, setNodes, setEdges, nodes, edges])
+
+  const handleRedo = useCallback(() => {
+    if (canRedo) {
+      redo(setNodes as any, setEdges as any, nodes, edges)
+    }
+  }, [canRedo, redo, setNodes, setEdges, nodes, edges])
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if focused on an input or textarea
+      const target = e.target as HTMLElement
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return
+      }
+
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+        e.preventDefault()
+        if (e.shiftKey) {
+          handleRedo()
+        } else {
+          handleUndo()
+        }
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [handleUndo, handleRedo])
+
+  // Track node position changes to take snapshots after drag ends
+  const isDraggingRef = useRef(false)
+  const dragSnapshotTakenRef = useRef(false)
+
+  // Wrapped onNodesChange to take snapshots before significant changes
+  const onNodesChangeWithSnapshot = useCallback(
+    (changes: any[]) => {
+      // Check if there are any position changes starting (drag start)
+      const positionChanges = changes.filter((c: any) => c.type === 'position')
+      const isStartingDrag = positionChanges.some((c: any) => c.dragging === true)
+      const isEndingDrag = positionChanges.some((c: any) => c.dragging === false)
+
+      // Take snapshot at drag start
+      if (isStartingDrag && !isDraggingRef.current) {
+        isDraggingRef.current = true
+        dragSnapshotTakenRef.current = false
+        // Take snapshot before the drag
+        takeSnapshot(nodes, edges)
+        dragSnapshotTakenRef.current = true
+      }
+
+      // Reset drag state when drag ends
+      if (isEndingDrag) {
+        isDraggingRef.current = false
+      }
+
+      // Take snapshot before node removal
+      const removeChanges = changes.filter((c: any) => c.type === 'remove')
+      if (removeChanges.length > 0) {
+        takeSnapshot(nodes, edges)
+      }
+
+      // Apply the changes
+      onNodesChange(changes)
+    },
+    [onNodesChange, takeSnapshot, nodes, edges]
+  )
+
+  // Wrapped onEdgesChange to take snapshots before edge removal
+  const onEdgesChangeWithSnapshot = useCallback(
+    (changes: EdgeChange<Edge>[]) => {
+      // Take snapshot before edge removal
+      const removeChanges = changes.filter((c) => c.type === 'remove')
+      if (removeChanges.length > 0) {
+        takeSnapshot(nodes, edges)
+      }
+
+      onEdgesChange(changes)
+    },
+    [onEdgesChange, takeSnapshot, nodes, edges]
+  )
 
   const updateNodeData = useCallback((nodeId: string, data: any) => {
     setNodes((nds) =>
@@ -911,6 +1002,8 @@ function WorkflowEditorInner() {
           targetType: targetNode?.type,
         })
       }
+      // Take snapshot before adding edge for undo support
+      takeSnapshot(nodes, edges)
       setEdges((eds) =>
         addEdge(
           {
@@ -921,7 +1014,7 @@ function WorkflowEditorInner() {
         )
       )
     },
-    [setEdges, isAnimated, nodes]
+    [setEdges, isAnimated, nodes, edges, takeSnapshot]
   )
 
   const onEdgesChangeWithDebug = useCallback(
@@ -991,9 +1084,9 @@ function WorkflowEditorInner() {
         return reconnectedEdges.map((edge) =>
           edge.id === oldEdge.id
             ? {
-                ...edge,
-                ...getEdgeVisualProps(newConnection.sourceHandle, isAnimated),
-              }
+              ...edge,
+              ...getEdgeVisualProps(newConnection.sourceHandle, isAnimated),
+            }
             : edge
         )
       })
@@ -1055,6 +1148,8 @@ function WorkflowEditorInner() {
             }),
           } satisfies Node<WorkflowNodeData>
 
+          // Take snapshot before adding node for undo support
+          takeSnapshot(nodes, edges)
           setNodes((nds) => [...nds, newNode])
 
           void (async () => {
@@ -1158,9 +1253,11 @@ function WorkflowEditorInner() {
         }),
       } satisfies Node<WorkflowNodeData>
 
+      // Take snapshot before adding node for undo support
+      takeSnapshot(nodes, edges)
       setNodes((nds) => [...nds, newNode])
     },
-    [screenToFlowPosition, setNodes, updateNodeData, workflowId]
+    [screenToFlowPosition, setNodes, updateNodeData, workflowId, nodes, edges, takeSnapshot]
   )
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: any) => {
@@ -1242,8 +1339,10 @@ function WorkflowEditorInner() {
         onUpdateNodeData: updateNodeData,
       }),
     } satisfies Node<WorkflowNodeData>
+    // Take snapshot before adding node for undo support
+    takeSnapshot(nodes, edges)
     setNodes((nds) => [...nds, newNode])
-  }, [setNodes, updateNodeData])
+  }, [setNodes, updateNodeData, nodes, edges, takeSnapshot])
 
   const handleManualSave = useCallback(async () => {
     if (!workflowId) return
@@ -1545,8 +1644,8 @@ function WorkflowEditorInner() {
             <ReactFlow
               nodes={nodes}
               edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChangeWithDebug}
+              onNodesChange={onNodesChangeWithSnapshot}
+              onEdgesChange={onEdgesChangeWithSnapshot}
               onConnect={onConnect}
               onReconnect={onReconnect}
               isValidConnection={isValidConnection}
@@ -1585,6 +1684,26 @@ function WorkflowEditorInner() {
             >
               <Background />
               <Controls position="bottom-center">
+                <ControlButton
+                  onClick={handleUndo}
+                  disabled={!canUndo}
+                  title="Undo (Cmd+Z)"
+                  className={!canUndo ? "opacity-50 cursor-not-allowed" : ""}
+                >
+                  <Undo2
+                    className={`h-4 w-4 ${!canUndo ? 'text-gray-300' : 'text-gray-500'}`}
+                  />
+                </ControlButton>
+                <ControlButton
+                  onClick={handleRedo}
+                  disabled={!canRedo}
+                  title="Redo (Cmd+Shift+Z)"
+                  className={!canRedo ? "opacity-50 cursor-not-allowed" : ""}
+                >
+                  <Redo2
+                    className={`h-4 w-4 ${!canRedo ? 'text-gray-300' : 'text-gray-500'}`}
+                  />
+                </ControlButton>
                 <ControlButton
                   onClick={toggleAnimation}
                   title={isAnimated ? "Disable Animated Edges" : "Enable Animated Edges"}
