@@ -26,6 +26,11 @@ export const OUTPUT_HANDLE_IDS = {
     video: 'videoOutput',
 };
 
+export const TOOL_OUTPUT_HANDLE_IDS = {
+    painterResult: 'painterResultOutput',
+    painterMask: 'painterMaskOutput',
+};
+
 export const MODELS: Model[] = [
     {
         id: 'gemini-2.5-flash-image',

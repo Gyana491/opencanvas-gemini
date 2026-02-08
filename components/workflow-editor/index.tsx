@@ -45,7 +45,7 @@ import { NodeLibrary } from './node-library'
 import { NodeProperties } from './node-properties'
 import { workflowNodeTypes } from './node-types'
 import { useWorkflow } from './hooks/use-workflow'
-import { MODELS, OUTPUT_HANDLE_IDS } from '@/data/models'
+import { MODELS, OUTPUT_HANDLE_IDS, TOOL_OUTPUT_HANDLE_IDS } from '@/data/models'
 import { TOOLS } from '@/data/tools'
 import { PaneContextMenu } from './pane-context-menu'
 import { uploadToR2 } from '@/lib/utils/upload'
@@ -105,6 +105,12 @@ function getKindFromSourceHandle(sourceHandle?: string | null): HandleKind | nul
   if (sourceHandle === OUTPUT_HANDLE_IDS.image) {
     return 'image'
   }
+  if (
+    sourceHandle === TOOL_OUTPUT_HANDLE_IDS.painterResult ||
+    sourceHandle === TOOL_OUTPUT_HANDLE_IDS.painterMask
+  ) {
+    return 'image'
+  }
   if (sourceHandle === OUTPUT_HANDLE_IDS.video) {
     return 'video'
   }
@@ -150,6 +156,8 @@ function getDefaultHandleLabel(id: string, type: HandleKind): string {
   if (id === 'prompt') return 'Prompt'
   if (id === OUTPUT_HANDLE_IDS.text || id === 'text' || (id === 'output' && type === 'text')) return 'Text'
   if (id === OUTPUT_HANDLE_IDS.image || id === 'image' || (id === 'output' && type === 'image')) return 'Image'
+  if (id === TOOL_OUTPUT_HANDLE_IDS.painterResult) return 'Result'
+  if (id === TOOL_OUTPUT_HANDLE_IDS.painterMask) return 'Mask'
   if (id === OUTPUT_HANDLE_IDS.video || id === 'video' || (id === 'output' && type === 'video')) return 'Video'
 
   const imageMatch = id.match(/^image_(\d+)$/)
@@ -197,7 +205,7 @@ function normalizeHandleList(rawHandles: unknown, direction: 'input' | 'output')
   })
 }
 
-const RUNTIME_ONLY_TOOL_NODE_TYPES = new Set(['blur', 'colorGrading', 'crop'])
+const RUNTIME_ONLY_TOOL_NODE_TYPES = new Set(['blur', 'colorGrading', 'crop', 'painter'])
 
 function stripRuntimeDataFromNodeData<T extends Record<string, unknown>>(nodeType: string | undefined, data: T): T {
   const cleaned: Record<string, unknown> = {}
@@ -224,7 +232,14 @@ function stripRuntimeDataFromNodeData<T extends Record<string, unknown>>(nodeTyp
 
     if (
       RUNTIME_ONLY_TOOL_NODE_TYPES.has(nodeType || '') &&
-      (key === 'output' || key === 'imageOutput' || key === 'videoOutput' || key === 'getOutput')
+      (
+        key === 'output' ||
+        key === 'imageOutput' ||
+        key === 'videoOutput' ||
+        key === 'maskOutput' ||
+        key === 'getOutput' ||
+        key === 'getMaskOutput'
+      )
     ) {
       continue
     }
@@ -596,6 +611,8 @@ function WorkflowEditorInner() {
     return JSON.stringify(nodes.map(n => ({
       id: n.id,
       output: n.data.output,
+      imageOutput: n.data.imageOutput,
+      maskOutput: n.data.maskOutput,
       imageUrl: n.data.imageUrl,
       text: n.data.text,
       blurType: n.data.blurType,
@@ -621,6 +638,7 @@ function WorkflowEditorInner() {
           if (!sourceNode) return
 
           const targetHandle = edge.targetHandle
+          const sourceHandle = edge.sourceHandle
 
           // Map source data to target connected fields
           if (targetHandle === 'prompt') {
@@ -654,6 +672,17 @@ function WorkflowEditorInner() {
               connectedData[dataKey] =
                 sourceNode.data.imageOutput ||
                 (typeof sourceNode.data.getOutput === 'function' ? sourceNode.data.getOutput() : null)
+            } else if (sourceNode.type === 'painter') {
+              if (sourceHandle === TOOL_OUTPUT_HANDLE_IDS.painterMask) {
+                connectedData[dataKey] =
+                  sourceNode.data.maskOutput ||
+                  (typeof sourceNode.data.getMaskOutput === 'function' ? sourceNode.data.getMaskOutput() : null)
+              } else {
+                connectedData[dataKey] =
+                  sourceNode.data.output ||
+                  sourceNode.data.imageOutput ||
+                  (typeof sourceNode.data.getOutput === 'function' ? sourceNode.data.getOutput() : null)
+              }
             } else if (sourceNode.data.imageOutput) {
               connectedData[dataKey] = sourceNode.data.imageOutput
             } else if (sourceNode.data.output) {
@@ -702,6 +731,23 @@ function WorkflowEditorInner() {
                 imageOutput: null,
                 getOutput: null,
                 cropRect: null,
+              },
+            }
+          }
+        }
+
+        if (node.type === 'painter' && !hasImageEdge) {
+          if (node.data.connectedImage) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                connectedImage: '',
+                output: null,
+                imageOutput: null,
+                maskOutput: null,
+                getOutput: null,
+                getMaskOutput: null,
               },
             }
           }
@@ -772,7 +818,23 @@ function WorkflowEditorInner() {
       if (!targetInput) {
         return false
       }
-      return (targetInput.allowedSourceIds || []).includes(sourceHandle)
+      const allowedSourceIds = targetInput.allowedSourceIds || []
+      if (allowedSourceIds.includes(sourceHandle)) {
+        return true
+      }
+
+      const sourceKind = getKindFromSourceHandle(sourceHandle)
+      if (!sourceKind || targetInput.type !== sourceKind) {
+        return false
+      }
+
+      const canonicalHandleIdByKind = {
+        text: OUTPUT_HANDLE_IDS.text,
+        image: OUTPUT_HANDLE_IDS.image,
+        video: OUTPUT_HANDLE_IDS.video,
+      } as const
+
+      return allowedSourceIds.includes(canonicalHandleIdByKind[sourceKind])
     },
     [nodes, edges, reconnectingEdgeId]
   )
@@ -968,6 +1030,12 @@ function WorkflowEditorInner() {
             cropHeight: 0,
             lockAspect: true,
           }),
+          ...(nodeType === 'painter' && {
+            mode: 'brush',
+            brushSize: 32,
+            brushColor: '#ff0000',
+            opacity: 1,
+          }),
           ...getNodeHandles(nodeType, {}),
           onUpdateNodeData: updateNodeData,
         }),
@@ -1046,6 +1114,12 @@ function WorkflowEditorInner() {
           cropWidth: 0,
           cropHeight: 0,
           lockAspect: true,
+        }),
+        ...(nodeType === 'painter' && {
+          mode: 'brush',
+          brushSize: 32,
+          brushColor: '#ff0000',
+          opacity: 1,
         }),
         ...getNodeHandles(nodeType),
         onUpdateNodeData: updateNodeData,

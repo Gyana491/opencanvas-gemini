@@ -9,6 +9,7 @@ import { Veo31GeneratePreviewNode } from "./nodes/models/veo-3.1-generate-previe
 import { BlurNode } from "./nodes/tools/blur-node"
 import { ColorGradingNode } from "./nodes/tools/color-grading-node"
 import { CropNode } from "./nodes/tools/crop-node"
+import { PainterNode } from "./nodes/tools/painter-node"
 
 export const workflowNodeTypes = {
   "imagen-4.0-generate-001": Imagen40Generate001Node,
@@ -20,4 +21,5 @@ export const workflowNodeTypes = {
   blur: BlurNode,
   colorGrading: ColorGradingNode,
   crop: CropNode,
+  painter: PainterNode,
 }

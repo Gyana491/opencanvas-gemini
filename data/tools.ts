@@ -1,5 +1,5 @@
 
-import { HandleMeta, OUTPUT_HANDLE_IDS } from './models';
+import { HandleMeta, OUTPUT_HANDLE_IDS, TOOL_OUTPUT_HANDLE_IDS } from './models';
 
 export interface Tool {
     id: string;
@@ -103,6 +103,34 @@ export const TOOLS: Tool[] = [
             {
                 id: OUTPUT_HANDLE_IDS.image,
                 label: 'Image',
+                type: 'image',
+            },
+        ],
+    }
+    ,
+    {
+        id: 'painter',
+        name: 'Painter',
+        title: 'Painter',
+        description: 'Draw and erase on image with result and mask outputs',
+        category: 'media',
+        inputs: [
+            {
+                id: OUTPUT_HANDLE_IDS.image,
+                label: 'Image',
+                type: 'image',
+                allowedSourceIds: [OUTPUT_HANDLE_IDS.image],
+            },
+        ],
+        outputs: [
+            {
+                id: TOOL_OUTPUT_HANDLE_IDS.painterResult,
+                label: 'Result',
+                type: 'image',
+            },
+            {
+                id: TOOL_OUTPUT_HANDLE_IDS.painterMask,
+                label: 'Mask',
                 type: 'image',
             },
         ],
