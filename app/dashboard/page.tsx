@@ -212,20 +212,20 @@ export default function DashboardPage() {
 
   return (
     <div className="flex-1 flex flex-col h-full space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-2 md:mt-0">
         <h2 className="text-2xl font-semibold tracking-tight">My Workflows</h2>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => setIsImportDialogOpen(true)}>
+          <Button variant="outline" size="sm" className="flex-1 sm:flex-none" onClick={() => setIsImportDialogOpen(true)}>
             <Package className="mr-2 h-4 w-4" /> Import
           </Button>
-          <Button onClick={handleCreateNewFile}>
-            <Plus className="mr-2 h-4 w-4" /> Create New Workflow
+          <Button size="sm" className="flex-1 sm:flex-none" onClick={handleCreateNewFile}>
+            <Plus className="mr-2 h-4 w-4" /> Create New
           </Button>
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-sm">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="relative flex-1 w-full md:max-w-sm">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
             type="search"
@@ -235,21 +235,24 @@ export default function DashboardPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant={viewMode === 'list' ? 'secondary' : 'ghost'}
-            size="icon"
-            onClick={() => setViewMode('list')}
-          >
-            <List className="h-4 w-4" />
-          </Button>
-          <Button
-            variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
-            size="icon"
-            onClick={() => setViewMode('grid')}
-          >
-            <Grid3x3 className="h-4 w-4" />
-          </Button>
+        <div className="flex items-center justify-between sm:justify-end gap-2 w-full md:w-auto">
+          <p className="text-sm text-muted-foreground md:hidden">View mode:</p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+              size="icon"
+              onClick={() => setViewMode('list')}
+            >
+              <List className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+              size="icon"
+              onClick={() => setViewMode('grid')}
+            >
+              <Grid3x3 className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -273,7 +276,7 @@ export default function DashboardPage() {
       ) : (
         <ScrollArea className="flex-1 -mx-4 px-4">
           {viewMode === 'grid' ? (
-            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 pb-10">
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 pb-10">
               {filteredWorkflows.map((workflow) => (
                 <Card
                   key={workflow.id}
@@ -344,8 +347,8 @@ export default function DashboardPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>Updated</TableHead>
-                  <TableHead>Created</TableHead>
+                  <TableHead className="hidden sm:table-cell">Updated</TableHead>
+                  <TableHead className="hidden lg:table-cell">Created</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -370,8 +373,8 @@ export default function DashboardPage() {
                         <span>{workflow.name}</span>
                       </div>
                     </TableCell>
-                    <TableCell>{formatDistanceToNow(new Date(workflow.updatedAt), { addSuffix: true })}</TableCell>
-                    <TableCell>{formatDistanceToNow(new Date(workflow.createdAt), { addSuffix: true })}</TableCell>
+                    <TableCell className="hidden sm:table-cell">{formatDistanceToNow(new Date(workflow.updatedAt), { addSuffix: true })}</TableCell>
+                    <TableCell className="hidden lg:table-cell">{formatDistanceToNow(new Date(workflow.createdAt), { addSuffix: true })}</TableCell>
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -446,12 +449,12 @@ export default function DashboardPage() {
         </DialogContent>
       </Dialog>
 
-      <ImportDialog 
-        isOpen={isImportDialogOpen} 
+      <ImportDialog
+        isOpen={isImportDialogOpen}
         onClose={() => {
           setIsImportDialogOpen(false)
           fetchWorkflows() // Refresh workflow list after import
-        }} 
+        }}
       />
 
       {workflowToExport && (
