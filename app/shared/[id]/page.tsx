@@ -470,6 +470,11 @@ function SharedWorkflowInner() {
         .shared-readonly .react-flow__node {
           pointer-events: none;
         }
+
+        /* Keep shared view read-only, but allow video playback controls. */
+        .shared-readonly .react-flow__node video {
+          pointer-events: auto;
+        }
       `}</style>
     </div>
   )
