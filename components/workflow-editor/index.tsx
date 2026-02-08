@@ -310,6 +310,22 @@ function normalizeNodeHandleData(nodeType: string | undefined, data: unknown): W
   }
 }
 
+function formatUnknownError(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+  if (typeof error === 'string' && error.trim().length > 0) {
+    return error
+  }
+  if (error && typeof error === 'object') {
+    const entries = Object.entries(error as Record<string, unknown>)
+    if (entries.length > 0) {
+      return entries.map(([key, value]) => `${key}=${String(value)}`).join(', ')
+    }
+  }
+  return ''
+}
+
 function WorkflowEditorInner() {
   const params = useParams()
   const router = useRouter()
@@ -448,6 +464,21 @@ function WorkflowEditorInner() {
   const generateThumbnail = useCallback(async () => {
     if (!reactFlowWrapper.current || !workflowId || workflowId === 'new') return
 
+    const hasTransientMediaState = nodes.some((node) => {
+      const data = node.data as Record<string, unknown>
+      if (Boolean(data?.isUploading)) {
+        return true
+      }
+      return ['imageUrl', 'videoUrl', 'output', 'localPreviewUrl'].some((key) => {
+        const value = data[key]
+        return typeof value === 'string' && value.startsWith('blob:')
+      })
+    })
+
+    if (hasTransientMediaState) {
+      return
+    }
+
     try {
       // Extended delay to ensure all images are loaded
       await new Promise(resolve => setTimeout(resolve, 500))
@@ -481,7 +512,10 @@ function WorkflowEditorInner() {
           filter: filterNode,
         })
       } catch (primaryError) {
-        console.warn('[Workflow Editor] Primary thumbnail capture failed, retrying with safe options:', primaryError)
+        const primaryErrorMessage = formatUnknownError(primaryError)
+        if (primaryErrorMessage) {
+          console.warn(`[Workflow Editor] Primary thumbnail capture failed, retrying with safe options: ${primaryErrorMessage}`)
+        }
         dataUrl = await toPng(target, {
           backgroundColor: '#fff',
           cacheBust: true,
@@ -516,10 +550,13 @@ function WorkflowEditorInner() {
         console.error('[Workflow Editor] Failed to update thumbnail:', errorText)
       }
     } catch (error) {
-      console.error('[Workflow Editor] Thumbnail generation error:', error instanceof Error ? error.message : error)
+      const errorMessage = formatUnknownError(error)
+      if (errorMessage) {
+        console.warn(`[Workflow Editor] Thumbnail generation skipped: ${errorMessage}`)
+      }
       // Don't throw - allow the app to continue if thumbnail fails
     }
-  }, [workflowId])
+  }, [workflowId, nodes])
 
   // Auto-save workflow when nodes, edges, or viewport changes
   useEffect(() => {
@@ -916,7 +953,6 @@ function WorkflowEditorInner() {
         for (let index = 0; index < imageFiles.length; index += 1) {
           const file = imageFiles[index]
           const nodeId = `imageUpload-${Date.now()}-${index}`
-          const localPreviewUrl = URL.createObjectURL(file)
 
           const newNode = {
             id: nodeId,
@@ -927,12 +963,11 @@ function WorkflowEditorInner() {
             },
             data: normalizeNodeHandleData('imageUpload', {
               label: 'Image Upload',
-              imageUrl: localPreviewUrl,
+              imageUrl: '',
               assetPath: '',
               fileName: file.name,
               isUploading: true,
               uploadError: '',
-              localPreviewUrl,
               ...getNodeHandles('imageUpload', {}),
               onUpdateNodeData: updateNodeData,
             }),
@@ -945,6 +980,8 @@ function WorkflowEditorInner() {
 
             if (!uploadResult.success || !uploadResult.url) {
               updateNodeData(nodeId, {
+                imageUrl: '',
+                assetPath: '',
                 isUploading: false,
                 uploadError: uploadResult.error || 'Upload failed',
               })
@@ -958,9 +995,7 @@ function WorkflowEditorInner() {
               fileName: file.name,
               isUploading: false,
               uploadError: '',
-              localPreviewUrl: '',
             })
-            URL.revokeObjectURL(localPreviewUrl)
           })()
         }
 

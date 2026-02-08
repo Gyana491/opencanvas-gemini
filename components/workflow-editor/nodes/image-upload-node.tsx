@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useRef, useState, useEffect, useCallback } from 'react'
+import { memo, useRef, useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { Handle, Position, type NodeProps, useReactFlow } from '@xyflow/react'
 import { Card } from '@/components/ui/card'
@@ -21,44 +21,20 @@ export const ImageNode = memo(({ data, selected, id }: NodeProps) => {
   const [isUploadingLocal, setIsUploadingLocal] = useState(false)
   const isUploading = isUploadingLocal || Boolean(data?.isUploading)
   const uploadError = (data?.uploadError as string) || ''
-  const localPreviewRef = useRef<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const revokeLocalPreview = useCallback(() => {
-    if (localPreviewRef.current) {
-      URL.revokeObjectURL(localPreviewRef.current)
-      localPreviewRef.current = null
-    }
-  }, [])
 
   // Update local state if data changes externally
   useEffect(() => {
     setPreview((data?.imageUrl as string) || '')
   }, [data?.imageUrl])
 
-  useEffect(() => {
-    return () => {
-      const dataLocalPreview = (data?.localPreviewUrl as string) || ''
-      if (dataLocalPreview.startsWith('blob:')) {
-        URL.revokeObjectURL(dataLocalPreview)
-      }
-      revokeLocalPreview()
-    }
-  }, [data?.localPreviewUrl, revokeLocalPreview])
-
 
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file && workflowId) {
-      const localPreviewUrl = URL.createObjectURL(file)
-      revokeLocalPreview()
-      localPreviewRef.current = localPreviewUrl
-      setPreview(localPreviewUrl)
       setIsUploadingLocal(true)
       updateNodeData(id, {
-        imageUrl: localPreviewUrl,
-        assetPath: '',
         fileName: file.name,
         isUploading: true,
         uploadError: '',
@@ -69,7 +45,6 @@ export const ImageNode = memo(({ data, selected, id }: NodeProps) => {
 
         if (response.success && response.url) {
           const imageUrl = response.url
-          revokeLocalPreview()
           setPreview(imageUrl)
           updateNodeData(id, {
             imageUrl: imageUrl,
@@ -80,14 +55,20 @@ export const ImageNode = memo(({ data, selected, id }: NodeProps) => {
           })
         } else {
           console.error("Failed to upload asset:", response.error)
+          setPreview('')
           updateNodeData(id, {
+            imageUrl: '',
+            assetPath: '',
             isUploading: false,
             uploadError: response.error || 'Upload failed',
           })
         }
       } catch (error) {
         console.error("Error uploading asset:", error)
+        setPreview('')
         updateNodeData(id, {
+          imageUrl: '',
+          assetPath: '',
           isUploading: false,
           uploadError: 'Upload failed',
         })
@@ -99,11 +80,6 @@ export const ImageNode = memo(({ data, selected, id }: NodeProps) => {
 
   const handleRemoveImage = (e: React.MouseEvent) => {
     e.stopPropagation()
-    const dataLocalPreview = (data?.localPreviewUrl as string) || ''
-    if (dataLocalPreview.startsWith('blob:')) {
-      URL.revokeObjectURL(dataLocalPreview)
-    }
-    revokeLocalPreview()
     setPreview('')
     updateNodeData(id, {
       imageUrl: '',
@@ -111,7 +87,6 @@ export const ImageNode = memo(({ data, selected, id }: NodeProps) => {
       fileName: '',
       isUploading: false,
       uploadError: '',
-      localPreviewUrl: '',
     })
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
@@ -145,7 +120,12 @@ export const ImageNode = memo(({ data, selected, id }: NodeProps) => {
 
             {/* Image Input */}
             <div className="relative">
-              {preview ? (
+              {isUploading ? (
+                <div className="h-40 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border rounded-md bg-muted/20">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Uploading image...</span>
+                </div>
+              ) : preview ? (
                 <div className="relative group/image">
                   <img
                     src={preview}
@@ -155,14 +135,6 @@ export const ImageNode = memo(({ data, selected, id }: NodeProps) => {
                     crossOrigin="anonymous"
                     className="w-full h-40 object-cover rounded-md border border-border"
                   />
-                  {isUploading && (
-                    <div className="absolute inset-0 rounded-md bg-black/45 backdrop-blur-[1px] flex items-center justify-center">
-                      <div className="flex items-center gap-2 text-xs text-white font-medium">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Uploading...
-                      </div>
-                    </div>
-                  )}
                   <Button
                     variant="destructive"
                     size="icon"
