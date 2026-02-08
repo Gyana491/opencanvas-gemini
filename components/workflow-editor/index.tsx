@@ -150,7 +150,7 @@ function WorkflowEditorInner() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<WorkflowNodeData>>(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
   const [selectedNode, setSelectedNode] = useState<any>(null)
-  const [isLibraryOpen, setIsLibraryOpen] = useState(false)
+  const [isLibraryOpen, setIsLibraryOpen] = useState(true)
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false)
   const [connectingSourceHandle, setConnectingSourceHandle] = useState<string | null>(null)
   const [isAnimated, setIsAnimated] = useState(true)

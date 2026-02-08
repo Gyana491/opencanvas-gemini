@@ -130,7 +130,7 @@ export function NodeContextMenu({
         <>
             <ContextMenuItem onSelect={handleCopy} className="gap-2">
                 <Copy className="h-4 w-4" />
-                Copy Data
+                Copy
             </ContextMenuItem>
             <ContextMenuItem onSelect={handleDuplicate} className="gap-2">
                 <Files className="h-4 w-4" />
@@ -160,7 +160,7 @@ export function NodeContextMenu({
         <>
             <DropdownMenuItem onSelect={handleCopy} className="gap-2">
                 <Copy className="h-4 w-4" />
-                Copy Data
+                Copy
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={handleDuplicate} className="gap-2">
                 <Files className="h-4 w-4" />

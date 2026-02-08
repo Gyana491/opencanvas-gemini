@@ -95,7 +95,7 @@ export function ImageModelNode({
                                     <Download className="w-4 h-4" />
                                 </Button>
                             )}
-                            <NodeContextMenu nodeId={id} type="dropdown">
+                            <NodeContextMenu nodeId={id} type="dropdown" asChild>
                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors">
                                     <MoreVertical className="w-4 h-4" />
                                 </Button>

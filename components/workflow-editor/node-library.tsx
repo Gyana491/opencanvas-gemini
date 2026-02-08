@@ -9,6 +9,7 @@ import { Search, Sparkles, Zap, Eye, Box, Video, X, FileText, Image as ImageIcon
 import { motion, AnimatePresence } from "motion/react"
 import { MODELS, Model } from "@/data/models"
 import { TOOLS, Tool } from "@/data/tools"
+import { PROVIDERS } from "@/data/providers"
 
 interface NodeLibraryProps {
   onAddNode: (nodeType: string) => void
@@ -30,12 +31,22 @@ const getCategory = (item: Model | Tool) => {
 };
 
 const getIcon = (item: Model | Tool) => {
+  // Priority 1: Provider Logo (for Models)
+  if ('providerId' in item && item.providerId) {
+    const provider = PROVIDERS.find(p => p.id === item.providerId);
+    if (provider?.logo) return provider.logo;
+  }
+
+  // Priority 2: Specific Hardcoded Overrides (if needed, but usually provider logo is preferred)
+  // if (item.id === 'gemini-3-pro-image-preview') return Sparkles; // User wants provider logo, so removing this
+
+  // Priority 3: Type/Category Defaults
   if ('type' in item && item.type === 'video') return Video;
   if ('category' in item && item.category === 'input') {
     return item.id === 'textInput' ? FileText : ImageIcon;
   }
-  if (item.id === 'gemini-3-pro-image-preview') return Sparkles;
   if (item.id === 'google-search') return Search;
+
   return ImageIcon;
 };
 

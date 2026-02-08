@@ -40,12 +40,5 @@ export const TOOLS: Tool[] = [
                 type: 'image',
             },
         ],
-    },
-    {
-        id: 'google-search',
-        name: 'Google Search',
-        title: 'Google Search',
-        description: 'Search the web for real-time information',
-        category: 'search'
     }
 ];

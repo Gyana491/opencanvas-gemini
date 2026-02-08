@@ -51,7 +51,7 @@ export const TextInputNode = memo(({ data, selected, id }: NodeProps) => {
               </div>
               <h3 className="font-semibold text-sm">Text Input</h3>
             </div>
-            <NodeContextMenu nodeId={id} type="dropdown">
+            <NodeContextMenu nodeId={id} type="dropdown" asChild>
               <Button variant="ghost" size="icon" className="h-6 w-6">
                 <MoreVertical className="h-3.5 w-3.5" />
               </Button>
