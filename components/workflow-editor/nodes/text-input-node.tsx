@@ -4,7 +4,6 @@ import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { Card } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
-import { Label } from '@/components/ui/label'
 import { FileText, MoreVertical } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { NodeContextMenu } from '../node-context-menu'
@@ -72,7 +71,7 @@ export const TextInputNode = memo(({ data, selected, id }: NodeProps) => {
             <Textarea
               value={(data?.text as string) || ''}
               placeholder="Enter your text or prompt here..."
-              className="min-h-[100px] text-sm resize-none nodrag"
+              className="h-[150px] max-h-[150px] overflow-y-auto text-sm resize-none nodrag nowheel"
               onChange={(e) => {
                 if (data?.onUpdateNodeData && typeof data.onUpdateNodeData === 'function') {
                   (data.onUpdateNodeData as (id: string, data: Record<string, unknown>) => void)(id, { text: e.target.value })

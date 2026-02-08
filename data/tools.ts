@@ -49,6 +49,57 @@ export const TOOLS: Tool[] = [
         category: 'input',
     },
     {
+        id: 'imageDescriber',
+        name: 'Image Describer',
+        title: 'Image Describer',
+        description: 'Generate text descriptions from one or more input images',
+        category: 'media',
+        outputs: [
+            {
+                id: OUTPUT_HANDLE_IDS.text,
+                label: 'Text',
+                type: 'text',
+            },
+        ],
+    },
+    {
+        id: 'promptEnhancer',
+        name: 'Prompt Enhancer',
+        title: 'Prompt Enhancer',
+        description: 'Enhance and refine prompts while preserving intent',
+        category: 'other',
+        inputs: [
+            {
+                id: 'prompt',
+                label: 'Prompt',
+                type: 'text',
+                required: true,
+                allowedSourceIds: [OUTPUT_HANDLE_IDS.text],
+            },
+        ],
+        outputs: [
+            {
+                id: OUTPUT_HANDLE_IDS.text,
+                label: 'Enhanced Prompt',
+                type: 'text',
+            },
+        ],
+    },
+    {
+        id: 'promptConcatenator',
+        name: 'Prompt Concatenator',
+        title: 'Prompt Concatenator',
+        description: 'Combine multiple text prompt inputs into one consolidated prompt',
+        category: 'other',
+        outputs: [
+            {
+                id: OUTPUT_HANDLE_IDS.text,
+                label: 'Combined Prompt',
+                type: 'text',
+            },
+        ],
+    },
+    {
         id: 'blur',
         name: 'Blur',
         title: 'Blur',

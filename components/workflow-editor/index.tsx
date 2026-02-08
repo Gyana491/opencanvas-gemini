@@ -52,12 +52,16 @@ import { TOOLS } from '@/data/tools'
 import { PaneContextMenu } from './pane-context-menu'
 import { uploadToR2 } from '@/lib/utils/upload'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { DEFAULT_IMAGE_DESCRIBER_SYSTEM_INSTRUCTION } from './nodes/tools/image-describer-node'
+import { DEFAULT_PROMPT_ENHANCER_SYSTEM_INSTRUCTION } from './nodes/tools/prompt-enhancer-node'
 
 const NODES_WITH_PROPERTIES = [
   'imagen-4.0-generate-001',
   'gemini-2.5-flash-image',
   'gemini-3-pro-image-preview',
   'veo-3.1-generate-preview',
+  'imageDescriber',
+  'promptEnhancer',
 ]
 
 type WorkflowNodeData = {
@@ -157,6 +161,8 @@ function normalizeHandleType(value: unknown, id: string): HandleKind {
 
 function getDefaultHandleLabel(id: string, type: HandleKind): string {
   if (id === 'prompt') return 'Prompt'
+  const promptMatch = id.match(/^prompt_(\d+)$/)
+  if (promptMatch) return `Prompt ${Number(promptMatch[1]) + 1}`
   if (id === OUTPUT_HANDLE_IDS.text || id === 'text' || (id === 'output' && type === 'text')) return 'Text'
   if (id === OUTPUT_HANDLE_IDS.image || id === 'image' || (id === 'output' && type === 'image')) return 'Image'
   if (id === TOOL_OUTPUT_HANDLE_IDS.painterResult) return 'Result'
@@ -281,6 +287,36 @@ function getNodeHandles(nodeType: string | undefined, data?: any): NodeHandleMet
         label: `Ref ${i + 1}`,
         type: 'image',
         allowedSourceIds: [OUTPUT_HANDLE_IDS.image],
+      });
+    }
+  } else if (nodeType === 'imageDescriber') {
+    const imageCount = Math.max(1, Number(data?.imageInputCount || 1));
+    for (let i = 0; i < imageCount; i++) {
+      inputs.push({
+        id: `image_${i}`,
+        label: imageCount === 1 ? 'Image' : `Image ${i + 1}`,
+        type: 'image',
+        allowedSourceIds: [OUTPUT_HANDLE_IDS.image],
+      });
+    }
+  } else if (nodeType === 'promptEnhancer') {
+    const imageCount = Math.max(1, Number(data?.imageInputCount || 1));
+    for (let i = 0; i < imageCount; i++) {
+      inputs.push({
+        id: `image_${i}`,
+        label: `Image ${i + 1}`,
+        type: 'image',
+        allowedSourceIds: [OUTPUT_HANDLE_IDS.image],
+      });
+    }
+  } else if (nodeType === 'promptConcatenator') {
+    const promptCount = Math.max(1, Number(data?.inputCount || 2));
+    for (let i = 0; i < promptCount; i++) {
+      inputs.push({
+        id: `prompt_${i}`,
+        label: `Prompt ${i + 1}`,
+        type: 'text',
+        allowedSourceIds: [OUTPUT_HANDLE_IDS.text],
       });
     }
   }
@@ -1266,6 +1302,23 @@ function WorkflowEditorInner() {
             note: '',
             noteColor: 'yellow',
           }),
+          ...(nodeType === 'imageDescriber' && {
+            imageInputCount: 1,
+            output: '',
+            model: 'gemini-2.5-flash',
+            systemInstruction: DEFAULT_IMAGE_DESCRIBER_SYSTEM_INSTRUCTION,
+          }),
+          ...(nodeType === 'promptEnhancer' && {
+            output: '',
+            imageInputCount: 1,
+            model: 'gemini-2.5-flash',
+            systemInstruction: DEFAULT_PROMPT_ENHANCER_SYSTEM_INSTRUCTION,
+          }),
+          ...(nodeType === 'promptConcatenator' && {
+            output: '',
+            additionalText: '',
+            inputCount: 2,
+          }),
           ...(nodeType === 'gemini-2.5-flash-image' && {
             prompt: '',
             aspectRatio: '1:1',
@@ -1356,6 +1409,23 @@ function WorkflowEditorInner() {
         ...(nodeType === 'stickyNote' && {
           note: '',
           noteColor: 'yellow',
+        }),
+        ...(nodeType === 'imageDescriber' && {
+          imageInputCount: 1,
+          output: '',
+          model: 'gemini-2.5-flash',
+          systemInstruction: DEFAULT_IMAGE_DESCRIBER_SYSTEM_INSTRUCTION,
+        }),
+        ...(nodeType === 'promptEnhancer' && {
+          output: '',
+          imageInputCount: 1,
+          model: 'gemini-2.5-flash',
+          systemInstruction: DEFAULT_PROMPT_ENHANCER_SYSTEM_INSTRUCTION,
+        }),
+        ...(nodeType === 'promptConcatenator' && {
+          output: '',
+          additionalText: '',
+          inputCount: 2,
         }),
         ...(nodeType === 'gemini-2.5-flash-image' && {
           prompt: '',

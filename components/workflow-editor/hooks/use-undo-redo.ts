@@ -6,6 +6,48 @@ type HistoryState = {
     edges: Edge[];
 };
 
+function sanitizeNodeDataForHistory(data: Record<string, unknown>): Record<string, unknown> {
+    const sanitized: Record<string, unknown> = {};
+
+    for (const [key, value] of Object.entries(data)) {
+        if (typeof value === 'function') {
+            continue;
+        }
+
+        // Connected payloads are derived from graph edges and should be recomputed.
+        if (key.startsWith('connected')) {
+            continue;
+        }
+
+        // Runtime blob URLs may be revoked and should not be restored from history.
+        if (typeof value === 'string' && value.startsWith('blob:')) {
+            continue;
+        }
+
+        // Runtime helper callbacks are never serializable.
+        if (key === 'getOutput' || key === 'getMaskOutput') {
+            continue;
+        }
+
+        sanitized[key] = value;
+    }
+
+    return sanitized;
+}
+
+function sanitizeNodesForHistory(nodes: Node[]): Node[] {
+    return nodes.map((node) => {
+        if (!node.data || typeof node.data !== 'object' || Array.isArray(node.data)) {
+            return node;
+        }
+
+        return {
+            ...node,
+            data: sanitizeNodeDataForHistory(node.data as Record<string, unknown>),
+        };
+    });
+}
+
 /**
  * Custom hook for managing undo/redo functionality in React Flow.
  * Stores history snapshots client-side only.
@@ -22,9 +64,10 @@ export function useUndoRedo(maxHistory = 50) {
      */
     const takeSnapshot = useCallback(
         (nodes: Node[], edges: Edge[]) => {
+            const sanitizedNodes = sanitizeNodesForHistory(nodes);
             // Deep clone to avoid reference issues
             const snapshot: HistoryState = {
-                nodes: JSON.parse(JSON.stringify(nodes)),
+                nodes: JSON.parse(JSON.stringify(sanitizedNodes)),
                 edges: JSON.parse(JSON.stringify(edges)),
             };
 
@@ -55,8 +98,9 @@ export function useUndoRedo(maxHistory = 50) {
             const previous = past[past.length - 1];
 
             // Save current state to future for redo
+            const sanitizedCurrentNodes = sanitizeNodesForHistory(currentNodes);
             const currentSnapshot: HistoryState = {
-                nodes: JSON.parse(JSON.stringify(currentNodes)),
+                nodes: JSON.parse(JSON.stringify(sanitizedCurrentNodes)),
                 edges: JSON.parse(JSON.stringify(currentEdges)),
             };
 
@@ -85,8 +129,9 @@ export function useUndoRedo(maxHistory = 50) {
             const next = future[future.length - 1];
 
             // Save current state to past for undo
+            const sanitizedCurrentNodes = sanitizeNodesForHistory(currentNodes);
             const currentSnapshot: HistoryState = {
-                nodes: JSON.parse(JSON.stringify(currentNodes)),
+                nodes: JSON.parse(JSON.stringify(sanitizedCurrentNodes)),
                 edges: JSON.parse(JSON.stringify(currentEdges)),
             };
 

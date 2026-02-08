@@ -10,6 +10,8 @@ import { ImageUploadProperties } from "./nodes/image-upload-node"
 import { Gemini25FlashImageProperties } from "./nodes/models/gemini-2.5-flash-image"
 import { Gemini3ProImagePreviewProperties } from "./nodes/models/gemini-3-pro-image-preview"
 import { Veo31GeneratePreviewProperties } from "./nodes/models/veo-3.1-generate-preview"
+import { ImageDescriberProperties } from "./nodes/tools/image-describer-node"
+import { PromptEnhancerProperties } from "./nodes/tools/prompt-enhancer-node"
 
 interface NodePropertiesProps {
   node: any
@@ -28,6 +30,8 @@ const PROPERTY_COMPONENTS: Record<string, any> = {
   "gemini-2.5-flash-image": Gemini25FlashImageProperties,
   "gemini-3-pro-image-preview": Gemini3ProImagePreviewProperties,
   "veo-3.1-generate-preview": Veo31GeneratePreviewProperties,
+  imageDescriber: ImageDescriberProperties,
+  promptEnhancer: PromptEnhancerProperties,
 }
 
 export function NodeProperties({
