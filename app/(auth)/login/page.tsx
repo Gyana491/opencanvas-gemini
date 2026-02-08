@@ -67,6 +67,7 @@ function LoginContent() {
         email: values.email,
         password: values.password,
         callbackURL: redirectTo,
+        rememberMe: true,
       }, {
         onSuccess: () => {
           toast.success("Signed in successfully")

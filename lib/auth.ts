@@ -4,11 +4,24 @@ import { emailOTP } from 'better-auth/plugins'
 import prisma from '@/lib/prisma'
 import { sendOTPEmail, sendResetPasswordEmail } from '@/lib/email/ses'
 
+const authBaseURL =
+  process.env.BETTER_AUTH_URL ?? process.env.NEXT_PUBLIC_BETTER_AUTH_URL
+const secureCookiesFromEnv = process.env.BETTER_AUTH_USE_SECURE_COOKIES
+const useSecureCookies =
+  secureCookiesFromEnv !== undefined
+    ? secureCookiesFromEnv === 'true'
+    : process.env.NODE_ENV === 'production'
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
     provider: 'postgresql',
   }),
-  baseURL: process.env.NEXT_PUBLIC_BETTER_AUTH_URL,
+  baseURL: authBaseURL,
+  session: {
+    // Keep users signed in across browser restarts.
+    expiresIn: 60 * 60 * 24 * 30, // 30 days
+    updateAge: 60 * 60 * 24, // 24 hours
+  },
   emailAndPassword: {
     enabled: true,
     sendResetPassword: async ({ user, url }) => {
@@ -28,7 +41,17 @@ export const auth = betterAuth({
       clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
     },
   },
-  trustedOrigins: ['https://localhost:3000', 'https://opencanvas.gyana.dev', 'https://opencanvas-gemini.vercel.app'],
+  trustedOrigins: [
+    'http://localhost:3000',
+    'https://localhost:3000',
+    'http://127.0.0.1:3000',
+    'https://127.0.0.1:3000',
+    'https://opencanvas.gyana.dev',
+    'https://opencanvas-gemini.vercel.app',
+  ],
+  advanced: {
+    useSecureCookies,
+  },
   plugins: [
     emailOTP({
       async sendVerificationOTP({ email, otp, type }) {
