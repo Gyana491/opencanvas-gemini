@@ -21,7 +21,7 @@ const inputSchema = z.object({
     imageSize: z.enum(['1K', '2K', '4K']).optional(),
 });
 
-export const NanoBananaProNode = memo(({ data, selected, id }: NodeProps) => {
+export const Gemini3ProImagePreviewNode = memo(({ data, selected, id }: NodeProps) => {
     const params = useParams()
     const workflowId = params?.id as string
     const [isRunning, setIsRunning] = useState(false);
@@ -42,7 +42,7 @@ export const NanoBananaProNode = memo(({ data, selected, id }: NodeProps) => {
     const aspectRatio = (data?.aspectRatio as string) || '1:1';
     const imageSize = (data?.imageSize as string) || '2K';
     const useGoogleSearch = (data?.useGoogleSearch as boolean) || false;
-    const imageInputCount = (data?.imageInputCount as number) || 0;
+    const imageInputCount = (data?.imageInputCount as number) ?? 1;
 
     const updateNodeInternals = useUpdateNodeInternals();
 
@@ -71,7 +71,7 @@ export const NanoBananaProNode = memo(({ data, selected, id }: NodeProps) => {
                 const imageKey = targetHandle === 'image' ? 'image' : targetHandle;
                 if (sourceNode.type === 'imageUpload') {
                     freshImages[imageKey] = (sourceNode.data?.imageUrl as string) || '';
-                } else if (sourceNode.type === 'nanoBanana' || sourceNode.type === 'nanoBananaPro' || sourceNode.type === 'imagen') {
+                } else if (sourceNode.type === 'gemini-2.5-flash-image' || sourceNode.type === 'gemini-3-pro-image-preview' || sourceNode.type === 'imagen-4.0-generate-001') {
                     freshImages[imageKey] = (sourceNode.data?.output as string) || '';
                 }
             }
@@ -236,14 +236,14 @@ export const NanoBananaProNode = memo(({ data, selected, id }: NodeProps) => {
     };
 
     const handleDownload = () => {
-        downloadMedia(output, `nano-banana-pro-${Date.now()}.png`);
+        downloadMedia(output, `gemini-3-pro-image-preview-${Date.now()}.png`);
     };
 
     return (
         <ImageModelNode
             id={id}
             selected={selected}
-            title="Nano Banana Pro"
+            title="gemini-3-pro-image-preview"
             icon={ImageIcon}
             iconClassName="bg-gradient-to-br from-purple-500 to-pink-500"
             isRunning={isRunning}
@@ -258,9 +258,9 @@ export const NanoBananaProNode = memo(({ data, selected, id }: NodeProps) => {
     )
 })
 
-NanoBananaProNode.displayName = 'NanoBananaProNode'
+Gemini3ProImagePreviewNode.displayName = 'Gemini3ProImagePreviewNode'
 
-export const NanoBananaProProperties = ({ node, onUpdateNode }: { node: any, onUpdateNode: (id: string, data: any) => void }) => {
+export const Gemini3ProImagePreviewProperties = ({ node, onUpdateNode }: { node: any, onUpdateNode: (id: string, data: any) => void }) => {
     const handleDataChange = (field: string, value: any) => {
         onUpdateNode(node.id, { [field]: value })
     }

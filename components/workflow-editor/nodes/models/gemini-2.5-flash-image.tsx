@@ -19,7 +19,7 @@ const inputSchema = z.object({
     aspectRatio: z.enum(['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9']).optional(),
 });
 
-export const NanoBananaNode = memo(({ data, selected, id }: NodeProps) => {
+export const Gemini25FlashImageNode = memo(({ data, selected, id }: NodeProps) => {
     const params = useParams()
     const workflowId = params?.id as string
     const [isRunning, setIsRunning] = useState(false);
@@ -37,7 +37,7 @@ export const NanoBananaNode = memo(({ data, selected, id }: NodeProps) => {
 
     const prompt = (data?.connectedPrompt as string) || (data?.prompt as string) || '';
     const aspectRatio = (data?.aspectRatio as string) || '1:1';
-    const imageInputCount = (data?.imageInputCount as number) || 0;
+    const imageInputCount = (data?.imageInputCount as number) ?? 1;
 
     const updateNodeInternals = useUpdateNodeInternals();
 
@@ -66,7 +66,7 @@ export const NanoBananaNode = memo(({ data, selected, id }: NodeProps) => {
                 const imageKey = targetHandle === 'image' ? 'image' : targetHandle;
                 if (sourceNode.type === 'imageUpload') {
                     freshImages[imageKey] = (sourceNode.data?.imageUrl as string) || '';
-                } else if (sourceNode.type === 'nanoBanana' || sourceNode.type === 'nanoBananaPro' || sourceNode.type === 'imagen') {
+                } else if (sourceNode.type === 'gemini-2.5-flash-image' || sourceNode.type === 'gemini-3-pro-image-preview' || sourceNode.type === 'imagen-4.0-generate-001') {
                     freshImages[imageKey] = (sourceNode.data?.output as string) || '';
                 }
             }
@@ -203,14 +203,14 @@ export const NanoBananaNode = memo(({ data, selected, id }: NodeProps) => {
     };
 
     const handleDownload = () => {
-        downloadMedia(output, `nano-banana-${Date.now()}.png`);
+        downloadMedia(output, `gemini-2.5-flash-image-${Date.now()}.png`);
     };
 
     return (
         <ImageModelNode
             id={id}
             selected={selected}
-            title="Nano Banana"
+            title="gemini-2.5-flash-image"
             icon={ImageIcon}
             iconClassName="bg-gradient-to-br from-yellow-500 to-orange-500"
             isRunning={isRunning}
@@ -225,9 +225,9 @@ export const NanoBananaNode = memo(({ data, selected, id }: NodeProps) => {
     )
 })
 
-NanoBananaNode.displayName = 'NanoBananaNode'
+Gemini25FlashImageNode.displayName = 'Gemini25FlashImageNode'
 
-export const NanoBananaProperties = ({ node, onUpdateNode }: { node: any, onUpdateNode: (id: string, data: any) => void }) => {
+export const Gemini25FlashImageProperties = ({ node, onUpdateNode }: { node: any, onUpdateNode: (id: string, data: any) => void }) => {
     const handleDataChange = (field: string, value: any) => {
         onUpdateNode(node.id, { [field]: value })
     }

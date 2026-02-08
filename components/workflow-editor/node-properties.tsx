@@ -5,11 +5,11 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import { X, Download, Share2 } from "lucide-react"
 import { motion, AnimatePresence } from "motion/react"
-import { ImagenProperties } from "./nodes/models/imagen-node"
+import { Imagen40Generate001Properties } from "./nodes/models/imagen-4.0-generate-001"
 import { ImageUploadProperties } from "./nodes/image-upload-node"
-import { NanoBananaProperties } from "./nodes/models/nano-banana-node"
-import { NanoBananaProProperties } from "./nodes/models/nano-banana-pro-node"
-import { Veo3Properties } from "./nodes/models/veo-3-node"
+import { Gemini25FlashImageProperties } from "./nodes/models/gemini-2.5-flash-image"
+import { Gemini3ProImagePreviewProperties } from "./nodes/models/gemini-3-pro-image-preview"
+import { Veo31GeneratePreviewProperties } from "./nodes/models/veo-3.1-generate-preview"
 
 interface NodePropertiesProps {
   node: any
@@ -23,11 +23,11 @@ interface NodePropertiesProps {
 
 const PROPERTY_COMPONENTS: Record<string, any> = {
 
-  imagen: ImagenProperties,
+  "imagen-4.0-generate-001": Imagen40Generate001Properties,
   imageUpload: ImageUploadProperties,
-  nanoBanana: NanoBananaProperties,
-  nanoBananaPro: NanoBananaProProperties,
-  veo3: Veo3Properties,
+  "gemini-2.5-flash-image": Gemini25FlashImageProperties,
+  "gemini-3-pro-image-preview": Gemini3ProImagePreviewProperties,
+  "veo-3.1-generate-preview": Veo31GeneratePreviewProperties,
 }
 
 export function NodeProperties({

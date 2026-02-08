@@ -4,6 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ProviderSettings } from "@/components/sidebar/provider-settings"
 import { Sparkles, Info } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { MODELS } from "@/data/models"
+import { TOOLS } from "@/data/tools"
 
 export default function ProvidersPage() {
     return (
@@ -58,101 +60,41 @@ export default function ProvidersPage() {
             <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Available Models</h3>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-base">Gemini 2.5 Pro</CardTitle>
-                            <CardDescription>
-                                Most advanced model with superior reasoning
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="text-sm text-muted-foreground">
-                            <ul className="list-disc list-inside space-y-1">
-                                <li>Best-in-class reasoning</li>
-                                <li>Complex problem solving</li>
-                                <li>Largest context window</li>
-                            </ul>
-                        </CardContent>
-                    </Card>
+                    {MODELS.filter(m => m.providerId === 'google').map((model) => (
+                        <Card key={model.id}>
+                            <CardHeader>
+                                <CardTitle className="text-base">{model.title}</CardTitle>
+                                <CardDescription>
+                                    {model.description}
+                                </CardDescription>
+                            </CardHeader>
+                            {model.features && model.features.length > 0 && (
+                                <CardContent className="text-sm text-muted-foreground">
+                                    <ul className="list-disc list-inside space-y-1">
+                                        {model.features.map((feature: string, i: number) => (
+                                            <li key={i}>{feature}</li>
+                                        ))}
+                                    </ul>
+                                </CardContent>
+                            )}
+                        </Card>
+                    ))}
+                </div>
+            </div>
 
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-base">Gemini 2.5 Flash</CardTitle>
-                            <CardDescription>
-                                Fast and efficient with great quality
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="text-sm text-muted-foreground">
-                            <ul className="list-disc list-inside space-y-1">
-                                <li>Optimized for speed</li>
-                                <li>Great for most tasks</li>
-                                <li>Cost-effective</li>
-                            </ul>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-base">Gemini 2.0 Flash</CardTitle>
-                            <CardDescription>
-                                Multimodal with native image/audio support
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="text-sm text-muted-foreground">
-                            <ul className="list-disc list-inside space-y-1">
-                                <li>Multimodal capabilities</li>
-                                <li>Image and audio input</li>
-                                <li>Fast responses</li>
-                            </ul>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-base">Gemini 1.5 Pro</CardTitle>
-                            <CardDescription>
-                                Previous generation pro model
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="text-sm text-muted-foreground">
-                            <ul className="list-disc list-inside space-y-1">
-                                <li>Advanced reasoning</li>
-                                <li>Long context support</li>
-                                <li>Proven reliability</li>
-                            </ul>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-base">Gemini 1.5 Flash</CardTitle>
-                            <CardDescription>
-                                Previous generation fast model
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="text-sm text-muted-foreground">
-                            <ul className="list-disc list-inside space-y-1">
-                                <li>Quick responses</li>
-                                <li>Good for simple tasks</li>
-                                <li>Reliable performance</li>
-                            </ul>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-base">Imagen 4.0</CardTitle>
-                            <CardDescription>
-                                AI image generation from text prompts
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="text-sm text-muted-foreground">
-                            <ul className="list-disc list-inside space-y-1">
-                                <li>High-quality images</li>
-                                <li>Multiple aspect ratios</li>
-                                <li>Fast generation</li>
-                            </ul>
-                        </CardContent>
-                    </Card>
+            <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Available Tools</h3>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {TOOLS.map((tool: any) => (
+                        <Card key={tool.id}>
+                            <CardHeader>
+                                <CardTitle className="text-base">{tool.title}</CardTitle>
+                                <CardDescription>
+                                    {tool.description}
+                                </CardDescription>
+                            </CardHeader>
+                        </Card>
+                    ))}
                 </div>
             </div>
         </div>

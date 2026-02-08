@@ -2,54 +2,31 @@
 
 import { memo, useRef, useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
-import { Handle, Position, type NodeProps } from '@xyflow/react'
+import { Handle, Position, type NodeProps, useReactFlow } from '@xyflow/react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Image as ImageIcon, Upload, MoreVertical, X, Loader2 } from 'lucide-react'
 import { uploadToR2 } from '@/lib/utils/upload'
+import { NodeContextMenu } from '../node-context-menu'
 
-export const ImageUploadNode = memo(({ data, selected, id }: NodeProps) => {
+export const ImageNode = memo(({ data, selected, id }: NodeProps) => {
   const params = useParams()
   const workflowId = params?.id as string
-  const outputs = (data?.outputs || []) as Array<{
-    id: string
-    label: string
-    type: 'text' | 'image'
-  }>
+  const { updateNodeData } = useReactFlow()
 
-  const getHandleTop = (index: number, total: number) => {
-    if (total <= 1) {
-      return '50%'
-    }
-    const start = 40
-    const end = 60
-    const step = (end - start) / (total - 1)
-    return `${start + index * step}%`
-  }
-
-  const getHandleClass = (kind: 'text' | 'image') =>
-    kind === 'image'
-      ? '!bg-emerald-400 !border-emerald-200'
-      : '!bg-sky-400 !border-sky-200'
-
-  const getLabelClass = (kind: 'text' | 'image') =>
-    kind === 'image'
-      ? 'text-emerald-300'
-      : 'text-sky-300'
-
-  // If assetPath exists, use it (it should be a full URL in Gemini version), otherwise imageUrl
-  const getInitialPreview = () => {
-    return (data?.imageUrl as string) || ''
-  }
-
-  const [preview, setPreview] = useState<string>(getInitialPreview())
+  // Initialize state from data
+  const initialImage = (data?.imageUrl as string) || ''
+  const [preview, setPreview] = useState<string>(initialImage)
   const [isUploading, setIsUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Update preview if data changes externally
+  // Update local state if data changes externally
   useEffect(() => {
-    setPreview(getInitialPreview())
+    setPreview((data?.imageUrl as string) || '')
   }, [data?.imageUrl])
+
+
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -62,14 +39,11 @@ export const ImageUploadNode = memo(({ data, selected, id }: NodeProps) => {
         if (response.success && response.url) {
           const imageUrl = response.url
           setPreview(imageUrl)
-
-          if (data?.onUpdateNodeData && typeof data.onUpdateNodeData === 'function') {
-            (data.onUpdateNodeData as (id: string, data: any) => void)(id, {
-              assetPath: imageUrl, // Storing full URL as assetPath for consistency in this version
-              fileName: file.name,
-              imageUrl: imageUrl
-            })
-          }
+          updateNodeData(id, {
+            imageUrl: imageUrl,
+            assetPath: imageUrl,
+            fileName: file.name
+          })
         } else {
           console.error("Failed to upload asset:", response.error)
         }
@@ -81,115 +55,122 @@ export const ImageUploadNode = memo(({ data, selected, id }: NodeProps) => {
     }
   }
 
-  const handleRemove = () => {
+  const handleRemoveImage = (e: React.MouseEvent) => {
+    e.stopPropagation()
     setPreview('')
-    if (data?.onUpdateNodeData && typeof data.onUpdateNodeData === 'function') {
-      (data.onUpdateNodeData as (id: string, data: any) => void)(id, {
-        imageUrl: '',
-        assetPath: '',
-        fileName: ''
-      })
-    }
+    updateNodeData(id, {
+      imageUrl: '',
+      assetPath: '',
+      fileName: ''
+    })
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
   }
 
   return (
-    <Card
-      className={`relative min-w-[280px] bg-card border-2 transition-all ${selected ? 'border-primary shadow-lg' : 'border-border'
-        }`}
-    >
-      <div className="p-3">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center">
-              <ImageIcon className="w-4 h-4 text-purple-500" />
+    <NodeContextMenu nodeId={id} type="context">
+      <Card
+        className={`relative min-w-[280px] bg-card border-2 transition-all group ${selected ? 'border-primary shadow-lg' : 'border-border'
+          }`}
+      >
+        <div className="p-3 space-y-3">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                <ImageIcon className="w-4 h-4 text-emerald-500" />
+              </div>
+              <h3 className="font-semibold text-sm">Image Node</h3>
             </div>
-            <h3 className="font-semibold text-sm">Image Upload</h3>
+            <NodeContextMenu nodeId={id} type="dropdown">
+              <Button variant="ghost" size="icon" className="h-6 w-6">
+                <MoreVertical className="h-3.5 w-3.5" />
+              </Button>
+            </NodeContextMenu>
           </div>
-          <Button variant="ghost" size="icon" className="h-6 w-6">
-            <MoreVertical className="h-3.5 w-3.5" />
-          </Button>
+
+          {/* Inputs */}
+          <div className="space-y-3">
+
+            {/* Image Input */}
+            <div className="relative">
+              {isUploading ? (
+                <div className="h-40 flex items-center justify-center border-2 border-dashed border-border rounded-md bg-muted/20">
+                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : preview ? (
+                <div className="relative group/image">
+                  <img
+                    src={preview}
+                    alt="Reference"
+                    crossOrigin="anonymous"
+                    className="w-full h-40 object-cover rounded-md border border-border"
+                  />
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover/image:opacity-100 transition-opacity nodrag"
+                    onClick={handleRemoveImage}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ) : (
+                <div
+                  className="h-40 border-2 border-dashed border-border rounded-md flex flex-col items-center justify-center cursor-pointer hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all nodrag"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center mb-2">
+                    <Upload className="w-5 h-5 text-muted-foreground" />
+                  </div>
+                  <p className="text-xs text-muted-foreground text-center px-4">
+                    Check reference image
+                  </p>
+                </div>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            </div>
+          </div>
         </div>
 
-        {/* Content */}
-        <div className="space-y-2">
-          {isUploading ? (
-            <div className="h-32 flex items-center justify-center border-2 border-dashed border-border rounded-md">
-              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : preview ? (
-            <div className="relative group">
-              <img
-                src={preview}
-                alt="Preview"
-                crossOrigin="anonymous"
-                className="w-full h-32 object-cover rounded-md"
-              />
-              <Button
-                variant="destructive"
-                size="icon"
-                className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity nodrag"
-                onClick={handleRemove}
-              >
-                <X className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          ) : (
-            <div
-              className="border-2 border-dashed border-border rounded-md p-6 flex flex-col items-center justify-center cursor-pointer hover:border-primary transition-colors nodrag"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Upload className="w-6 h-6 text-muted-foreground mb-2" />
-              <p className="text-xs text-muted-foreground text-center">
-                Click to upload image
-              </p>
-            </div>
-          )}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleFileChange}
+        {/* Outputs Handles - Positioned to look integrated */}
+
+        {/* Image Handle */}
+        <div className="absolute top-1/2 right-0 translate-x-1/2 -translate-y-1/2 flex items-center">
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="image"
+            className="!w-3 !h-3 !border-2 !bg-emerald-400 !border-emerald-200"
           />
         </div>
-      </div>
 
-      {/* Outside Labels */}
-      {outputs.map((output, index) => (
-        <div
-          key={`${output.id}-label`}
-          className={`absolute right-[-64px] flex items-center gap-2 text-xs -translate-y-1/2 ${getLabelClass(output.type)}`}
-          style={{ top: getHandleTop(index, outputs.length) }}
-        >
-          <span>{output.label}</span>
-        </div>
-      ))}
-
-      {/* Output Handles */}
-      {outputs.map((output, index) => (
-        <Handle
-          key={output.id}
-          type="source"
-          position={Position.Right}
-          id={output.id}
-          className={`!w-3 !h-3 !border-2 ${getHandleClass(output.type)}`}
-          style={{ top: getHandleTop(index, outputs.length) }}
-        />
-      ))}
-    </Card>
+      </Card>
+    </NodeContextMenu>
   )
 })
 
-ImageUploadNode.displayName = 'ImageUploadNode'
+ImageNode.displayName = 'ImageNode'
 
-export const ImageUploadProperties = ({ node, onUpdateNode }: { node: any, onUpdateNode: (id: string, data: any) => void }) => {
+// Export alias for backward compatibility if needed, or just standard export
+export const ImageUploadNode = ImageNode
+
+export const ImageNodeProperties = () => {
   return (
     <div className="space-y-4">
-      <p className="text-xs text-muted-foreground">Upload an image directly on the node. No additional configuration needed here.</p>
+      <p className="text-xs text-muted-foreground">
+        Configure the Image Node. Upload a reference image and provide text input.
+      </p>
     </div>
   )
 }
+
+// Alias for properties too
+export const ImageUploadProperties = ImageNodeProperties

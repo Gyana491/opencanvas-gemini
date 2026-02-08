@@ -44,12 +44,15 @@ import { NodeLibrary } from './node-library'
 import { NodeProperties } from './node-properties'
 import { workflowNodeTypes } from './node-types'
 import { useWorkflow } from './hooks/use-workflow'
+import { MODELS, OUTPUT_HANDLE_IDS } from '@/data/models'
+import { TOOLS } from '@/data/tools'
+import { PaneContextMenu } from './pane-context-menu'
 
 const NODES_WITH_PROPERTIES = [
-  'imagen',
-  'nanoBanana',
-  'nanoBananaPro',
-  'veo3',
+  'imagen-4.0-generate-001',
+  'gemini-2.5-flash-image',
+  'gemini-3-pro-image-preview',
+  'veo-3.1-generate-preview',
 ]
 
 type WorkflowNodeData = {
@@ -74,11 +77,7 @@ type NodeHandleMeta = {
   outputs?: HandleMeta[]
 }
 
-const OUTPUT_HANDLE_IDS = {
-  text: 'textOutput',
-  image: 'imageOutput',
-  video: 'videoOutput',
-}
+// OUTPUT_HANDLE_IDS is now imported from @/data/models
 
 const EDGE_COLORS = {
   text: '#38bdf8', // sky-400
@@ -111,115 +110,36 @@ function getEdgeColorFromSourceHandle(sourceHandle?: string | null): string {
 function getNodeHandles(nodeType: string | undefined, data?: any): NodeHandleMeta {
   if (!nodeType) return { inputs: [], outputs: [] }
 
-  switch (nodeType) {
-    case 'imagen':
-      return {
-        inputs: [
-          {
-            id: 'prompt',
-            label: 'Prompt',
-            type: 'text',
-            required: true,
-            allowedSourceIds: [OUTPUT_HANDLE_IDS.text],
-          },
-        ],
-        outputs: [
-          {
-            id: OUTPUT_HANDLE_IDS.image,
-            label: 'Image',
-            type: 'image',
-          },
-        ],
-      }
-    case 'textInput':
-      return {
-        outputs: [
-          {
-            id: OUTPUT_HANDLE_IDS.text,
-            label: 'Text',
-            type: 'text',
-          },
-        ],
-      }
-    case 'imageUpload':
-      return {
-        outputs: [
-          {
-            id: OUTPUT_HANDLE_IDS.image,
-            label: 'Image',
-            type: 'image',
-          },
-        ],
-      }
-    case 'nanoBanana':
-    case 'nanoBananaPro':
-      const imageCount = (data?.imageInputCount as number) || 1;
-      return {
-        inputs: [
-          {
-            id: 'prompt',
-            label: 'Prompt',
-            type: 'text',
-            required: true,
-            allowedSourceIds: [OUTPUT_HANDLE_IDS.text],
-          },
-          ...Array.from({ length: imageCount }).map((_, i) => ({
-            id: `image_${i}`,
-            label: `Ref Image ${i + 1}`,
-            type: 'image' as const,
-            allowedSourceIds: [OUTPUT_HANDLE_IDS.image],
-          })),
-        ],
-        outputs: [
-          {
-            id: OUTPUT_HANDLE_IDS.image,
-            label: 'Image',
-            type: 'image',
-          },
-        ],
-      }
-    case 'veo3':
-      const refImageCount = (data?.imageInputCount as number) || 0;
-      return {
-        inputs: [
-          {
-            id: 'prompt',
-            label: 'Prompt',
-            type: 'text',
-            required: true,
-            allowedSourceIds: [OUTPUT_HANDLE_IDS.text],
-          },
-          {
-            id: 'image',
-            label: 'First Frame',
-            type: 'image',
-            allowedSourceIds: [OUTPUT_HANDLE_IDS.image],
-          },
-          ...Array.from({ length: refImageCount }).map((_, i) => ({
-            id: `ref_image_${i}`,
-            label: `Ref ${i + 1}`,
-            type: 'image' as const,
-            allowedSourceIds: [OUTPUT_HANDLE_IDS.image],
-          })),
-          {
-            id: 'video',
-            label: 'Extend Video',
-            type: 'video',
-            allowedSourceIds: [OUTPUT_HANDLE_IDS.video],
-          },
-        ],
-        outputs: [
-          {
-            id: OUTPUT_HANDLE_IDS.video,
-            label: 'Video',
-            type: 'video',
-            allowedSourceIds: [OUTPUT_HANDLE_IDS.video],
-          },
-        ],
-      }
-    default:
-      return {}
+  const model = MODELS.find(m => m.id === nodeType) || TOOLS.find(t => t.id === nodeType);
+  if (!model) return { inputs: [], outputs: [] };
+
+  const inputs = [...(model.inputs || [])];
+  const outputs = [...(model.outputs || [])];
+
+  // Handle dynamic image inputs for specific models
+  if (nodeType === 'gemini-2.5-flash-image' || nodeType === 'gemini-3-pro-image-preview') {
+    const imageCount = (data?.imageInputCount as number) || 1;
+    for (let i = 0; i < imageCount; i++) {
+      inputs.push({
+        id: `image_${i}`,
+        label: `Ref Image ${i + 1}`,
+        type: 'image',
+        allowedSourceIds: [OUTPUT_HANDLE_IDS.image],
+      });
+    }
+  } else if (nodeType === 'veo-3.1-generate-preview') {
+    const refImageCount = (data?.imageInputCount as number) || 0;
+    for (let i = 0; i < refImageCount; i++) {
+      inputs.push({
+        id: `ref_image_${i}`,
+        label: `Ref ${i + 1}`,
+        type: 'image',
+        allowedSourceIds: [OUTPUT_HANDLE_IDS.image],
+      });
+    }
   }
+
+  return { inputs, outputs };
 }
 
 function WorkflowEditorInner() {
@@ -316,6 +236,7 @@ function WorkflowEditorInner() {
 
 
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
+  const [edgeContextMenu, setEdgeContextMenu] = useState<{ x: number; y: number; edgeId: string } | null>(null)
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const lastThumbnailTimeRef = useRef<number>(0)
 
@@ -378,6 +299,11 @@ function WorkflowEditorInner() {
       const res = await fetch(dataUrl)
       const blob = await res.blob()
       const file = new File([blob], "thumbnail.png", { type: "image/png" })
+
+      if (!workflowId || workflowId === 'new') {
+        console.log('[Workflow Editor] persistent ID required for thumbnail generation')
+        return
+      }
 
       const formData = new FormData()
       formData.append('file', file)
@@ -502,7 +428,7 @@ function WorkflowEditorInner() {
 
             if (sourceNode.type === 'imageUpload') {
               connectedData[dataKey] = sourceNode.data.imageUrl || ''
-            } else if (sourceNode.type === 'nanoBanana' || sourceNode.type === 'nanoBananaPro' || sourceNode.type === 'imagen') {
+            } else if (sourceNode.type === 'gemini-2.5-flash-image' || sourceNode.type === 'gemini-3-pro-image-preview' || sourceNode.type === 'imagen-4.0-generate-001') {
               // Get output from model nodes
               connectedData[dataKey] = sourceNode.data.output
             } else if (sourceNode.data.imageOutput) {
@@ -630,18 +556,14 @@ function WorkflowEditorInner() {
         y: event.clientY,
       })
 
+      const model = MODELS.find(m => m.id === nodeType) || TOOLS.find(t => t.id === nodeType);
       const newNode = {
         id: `${nodeType}-${Date.now()}`,
         type: nodeType,
         position,
         data: {
-          label: nodeType === 'imagen' ? 'Imagen 4.0' :
-            nodeType === 'nanoBanana' ? 'Nano Banana' :
-              nodeType === 'nanoBananaPro' ? 'Nano Banana Pro' :
-                nodeType === 'veo3' ? 'Veo 3' :
-                  nodeType === 'textInput' ? 'Text Input' :
-                    nodeType === 'imageUpload' ? 'Image Upload' : nodeType,
-          ...(nodeType === 'imagen' && {
+          label: model?.title || nodeType,
+          ...(nodeType === 'imagen-4.0-generate-001' && {
             prompt: '',
           }),
           ...(nodeType === 'textInput' && {
@@ -651,16 +573,16 @@ function WorkflowEditorInner() {
             imageUrl: '',
             fileName: '',
           }),
-          ...(nodeType === 'nanoBanana' && {
+          ...(nodeType === 'gemini-2.5-flash-image' && {
             prompt: '',
             aspectRatio: '1:1',
           }),
-          ...(nodeType === 'nanoBananaPro' && {
+          ...(nodeType === 'gemini-3-pro-image-preview' && {
             prompt: '',
             imageSize: '1K',
             useGoogleSearch: false,
           }),
-          ...(nodeType === 'veo3' && {
+          ...(nodeType === 'veo-3.1-generate-preview' && {
             prompt: '',
             resolution: '720p',
             durationSeconds: '8',
@@ -692,6 +614,7 @@ function WorkflowEditorInner() {
   }, [])
 
   const addNode = useCallback((nodeType: string) => {
+    const model = MODELS.find(m => m.id === nodeType) || TOOLS.find(t => t.id === nodeType);
     const newNode = {
       id: `${nodeType}-${Date.now()}`,
       type: nodeType,
@@ -700,13 +623,8 @@ function WorkflowEditorInner() {
         y: Math.random() * 400 + 100
       },
       data: {
-        label: nodeType === 'imagen' ? 'Imagen 4.0' :
-          nodeType === 'nanoBanana' ? 'Nano Banana' :
-            nodeType === 'nanoBananaPro' ? 'Nano Banana Pro' :
-              nodeType === 'veo3' ? 'Veo 3' :
-                nodeType === 'textInput' ? 'Text Input' :
-                  nodeType === 'imageUpload' ? 'Image Upload' : nodeType,
-        ...(nodeType === 'imagen' && {
+        label: model?.title || nodeType,
+        ...(nodeType === 'imagen-4.0-generate-001' && {
           prompt: '',
         }),
         ...(nodeType === 'textInput' && {
@@ -716,16 +634,16 @@ function WorkflowEditorInner() {
           imageUrl: '',
           fileName: '',
         }),
-        ...(nodeType === 'nanoBanana' && {
+        ...(nodeType === 'gemini-2.5-flash-image' && {
           prompt: '',
           aspectRatio: '1:1',
         }),
-        ...(nodeType === 'nanoBananaPro' && {
+        ...(nodeType === 'gemini-3-pro-image-preview' && {
           prompt: '',
           imageSize: '1K',
           useGoogleSearch: false,
         }),
-        ...(nodeType === 'veo3' && {
+        ...(nodeType === 'veo-3.1-generate-preview' && {
           prompt: '',
           resolution: '720p',
           durationSeconds: '8',
@@ -860,6 +778,103 @@ function WorkflowEditorInner() {
     router.push('/editor/new')
   }, [workflowId, getViewport, getSerializableGraph, nodes, edges, saveWorkflow, router])
 
+  const handlePaste = useCallback(
+    async (position?: { x: number; y: number }) => {
+      try {
+        const text = await navigator.clipboard.readText()
+        if (!text) return
+
+        const data = JSON.parse(text)
+
+        // Basic validation - check if it looks like a node
+        if (!data.id || !data.type) return
+
+        // Calculate position
+        let newPosition = position
+        if (!newPosition) {
+          // Paste at center of viewport if no position provided (keyboard shortcut)
+          const viewport = getViewport()
+          // Center of the visible area
+          // Viewport: { x, y, zoom }
+          // We want center of screen, converted to flow pos
+          // ReactFlow container center?
+          if (reactFlowWrapper.current) {
+            const { width, height } = reactFlowWrapper.current.getBoundingClientRect()
+            newPosition = screenToFlowPosition({
+              x: width / 2 + (window.screenX || 0), // screenToFlow takes screen coords effectively if clientX/Y used
+              y: height / 2 + (window.screenY || 0)
+            })
+            // Actually screenToFlowPosition expects clientX/Y relative to viewport
+            // If we just want center of the *Flow*, we can use checks.
+            // But simpler:
+            // Center x = (-viewport.x + width/2) / zoom
+            // Center y = (-viewport.y + height/2) / zoom
+            newPosition = {
+              x: (-viewport.x + width / 2) / viewport.zoom,
+              y: (-viewport.y + height / 2) / viewport.zoom
+            }
+          } else {
+            newPosition = { x: 0, y: 0 }
+          }
+        }
+
+        // Create new node with new ID
+        const newNode = {
+          ...data,
+          id: `${data.type}-${Date.now()}`,
+          position: newPosition,
+          selected: true,
+          data: {
+            ...data.data,
+            label: `${data.data.label} (Copy)`,
+          },
+        }
+
+        setNodes((nds) => nds.map(n => ({ ...n, selected: false })).concat(newNode))
+        toast.success("Node pasted")
+      } catch (err) {
+        console.error('Paste error:', err)
+        // items might not be a node
+      }
+    },
+    [getViewport, setNodes, screenToFlowPosition]
+  )
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      // Ignore if input/textarea is focused
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return
+      }
+
+      // Copy: Cmd+C / Ctrl+C
+      if ((e.metaKey || e.ctrlKey) && e.key === 'c') {
+        const selected = nodes.find(n => n.selected)
+        if (selected) {
+          e.preventDefault()
+          try {
+            await navigator.clipboard.writeText(JSON.stringify(selected, null, 2))
+            toast.success("Node copied to clipboard")
+            // console.log('Copied node:', selected.id)
+          } catch (err) {
+            console.error('Copy failed:', err)
+            toast.error("Failed to copy")
+          }
+        }
+      }
+
+      // Paste: Cmd+V / Ctrl+V
+      if ((e.metaKey || e.ctrlKey) && e.key === 'v') {
+        e.preventDefault()
+        handlePaste()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [nodes, handlePaste])
+
   return (
     <div className="flex h-screen w-full bg-background">
       {/* Minimal left sidebar with logo, search, layers - always visible */}
@@ -938,41 +953,79 @@ function WorkflowEditorInner() {
         )}
 
         <div className="w-full h-full" ref={reactFlowWrapper}>
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            isValidConnection={isValidConnection}
-            onConnectStart={onConnectStart}
-            onConnectEnd={onConnectEnd}
-            onNodeClick={onNodeClick}
-            onPaneClick={onPaneClick}
-            onDrop={onDrop}
-            onDragOver={onDragOver}
-            nodeTypes={workflowNodeTypes}
-            connectionLineStyle={{
-              stroke: getEdgeColorFromSourceHandle(connectingSourceHandle),
-              strokeWidth: 2,
-            }}
-            fitView
-            className="bg-background"
-            proOptions={{ hideAttribution: true }}
-          >
-            <Background />
-            <Controls position="bottom-center">
-              <ControlButton
-                onClick={toggleAnimation}
-                title={isAnimated ? "Disable Animated Edges" : "Enable Animated Edges"}
-                className={isAnimated ? "!bg-blue-500 !border-blue-500 hover:!bg-blue-600" : ""}
+          <PaneContextMenu onPaste={handlePaste}>
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              isValidConnection={isValidConnection}
+              onConnectStart={onConnectStart}
+              onConnectEnd={onConnectEnd}
+              onNodeClick={onNodeClick}
+              onEdgeContextMenu={(event, edge) => {
+                event.preventDefault()
+                setEdgeContextMenu({
+                  x: event.clientX,
+                  y: event.clientY,
+                  edgeId: edge.id,
+                })
+              }}
+              onPaneClick={() => {
+                setEdgeContextMenu(null)
+                onPaneClick()
+              }}
+              onDrop={onDrop}
+              onDragOver={onDragOver}
+              nodeTypes={workflowNodeTypes}
+              connectionLineStyle={{
+                stroke: getEdgeColorFromSourceHandle(connectingSourceHandle),
+              }}
+              fitView
+              className="bg-background"
+              proOptions={{ hideAttribution: true }}
+            >
+              <Background />
+              <Controls position="bottom-center">
+                <ControlButton
+                  onClick={toggleAnimation}
+                  title={isAnimated ? "Disable Animated Edges" : "Enable Animated Edges"}
+                  className={isAnimated ? "!bg-blue-500 !border-blue-500 hover:!bg-blue-600" : ""}
+                >
+                  <Activity
+                    className={`h-4 w-4 ${isAnimated ? 'text-white' : 'text-gray-500'}`}
+                  />
+                </ControlButton>
+              </Controls>
+            </ReactFlow>
+          </PaneContextMenu>
+
+          {/* Edge Context Menu */}
+          {edgeContextMenu && reactFlowWrapper.current && (
+            <div
+              className="absolute z-50 bg-popover border border-border rounded-md shadow-lg py-1 min-w-[120px]"
+              style={{
+                left: edgeContextMenu.x - reactFlowWrapper.current.getBoundingClientRect().left,
+                top: edgeContextMenu.y - reactFlowWrapper.current.getBoundingClientRect().top,
+              }}
+              onMouseLeave={() => setEdgeContextMenu(null)}
+            >
+              <button
+                className="w-full px-3 py-1.5 text-sm text-left hover:bg-accent hover:text-accent-foreground flex items-center gap-2"
+                onClick={() => {
+                  setEdges((edges) => edges.filter((e) => e.id !== edgeContextMenu.edgeId))
+                  setEdgeContextMenu(null)
+                  toast.success('Edge deleted')
+                }}
               >
-                <Activity
-                  className={`h-4 w-4 ${isAnimated ? 'text-white' : 'text-gray-500'}`}
-                />
-              </ControlButton>
-            </Controls>
-          </ReactFlow>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                Delete
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Node Library - slides from left, positioned after icon bar */}

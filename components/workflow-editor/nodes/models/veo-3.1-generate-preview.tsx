@@ -102,7 +102,7 @@ const resolveVideoInput = async (input: string): Promise<{ mimeType: string, bas
     });
 };
 
-export const Veo3Node = memo(({ data, selected, id }: NodeProps) => {
+export const Veo31GeneratePreviewNode = memo(({ data, selected, id }: NodeProps) => {
     const params = useParams()
     const workflowId = params?.id as string
     const [isRunning, setIsRunning] = useState(false);
@@ -405,14 +405,14 @@ export const Veo3Node = memo(({ data, selected, id }: NodeProps) => {
     };
 
     const handleDownload = () => {
-        downloadMedia(output, `veo-${Date.now()}.mp4`);
+        downloadMedia(output, `veo-3.1-generate-preview-${Date.now()}.mp4`);
     };
 
     return (
         <VideoModelNode
             id={id}
             selected={selected}
-            title="Veo"
+            title="veo-3.1-generate-preview"
             icon={Video}
             iconClassName="bg-gradient-to-br from-violet-500 to-indigo-500"
             isRunning={isRunning}
@@ -428,9 +428,9 @@ export const Veo3Node = memo(({ data, selected, id }: NodeProps) => {
     )
 })
 
-Veo3Node.displayName = 'Veo3Node'
+Veo31GeneratePreviewNode.displayName = 'Veo31GeneratePreviewNode'
 
-export const Veo3Properties = ({ node, onUpdateNode }: { node: any, onUpdateNode: (id: string, data: any) => void }) => {
+export const Veo31GeneratePreviewProperties = ({ node, onUpdateNode }: { node: any, onUpdateNode: (id: string, data: any) => void }) => {
     const handleDataChange = (field: string, value: any) => {
         onUpdateNode(node.id, { [field]: value })
     }

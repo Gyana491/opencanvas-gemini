@@ -5,8 +5,10 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
-import { Search, Sparkles, Zap, Eye, Box, Video, X, FileText, Image } from "lucide-react"
+import { Search, Sparkles, Zap, Eye, Box, Video, X, FileText, Image as ImageIcon } from "lucide-react"
 import { motion, AnimatePresence } from "motion/react"
+import { MODELS, Model } from "@/data/models"
+import { TOOLS, Tool } from "@/data/tools"
 
 interface NodeLibraryProps {
   onAddNode: (nodeType: string) => void
@@ -15,75 +17,60 @@ interface NodeLibraryProps {
   workflowName?: string
   onRename?: (newName: string) => void
 }
+const categoryMapping: Record<string, string> = {
+  'google': 'Google AI Models',
+  'input': 'Input Nodes',
+  'search': 'Agent Tools'
+};
 
-const nodeCategories: {
-  category: string;
-  nodes: {
-    id: string;
-    name: string;
-    description: string;
-    icon: any;
-    color: string;
-    badge?: string;
-  }[];
-}[] = [
-    {
-      category: "Input Nodes",
-      nodes: [
-        {
-          id: "textInput",
-          name: "Text Input",
-          description: "Enter text or prompts",
-          icon: FileText,
-          color: "text-blue-500",
-        },
-        {
-          id: "imageUpload",
-          name: "Image Upload",
-          description: "Upload images",
-          icon: Image,
-          color: "text-purple-500",
-        },
-      ],
-    },
-    {
-      category: "Google AI Models",
-      nodes: [
-        {
-          id: "imagen",
-          name: "Imagen 4.0",
-          description: "Generate images from text prompts",
-          icon: Image,
-          color: "text-emerald-500",
-          badge: "New",
-        },
-        {
-          id: "nanoBanana",
-          name: "Nano Banana",
-          description: "Fast image generation (Gemini 2.5 Flash)",
-          icon: Image,
-          color: "text-orange-500",
-          badge: "New",
-        },
-        {
-          id: "nanoBananaPro",
-          name: "Nano Banana Pro",
-          description: "Advanced image generation with thinking",
-          icon: Sparkles,
-          color: "text-pink-500",
-          badge: "New",
-        },
-        {
-          id: "veo3",
-          name: "Veo 3",
-          description: "High-fidelity video generation",
-          icon: Video,
-          color: "text-violet-500",
-          badge: "New",
-        },
-      ],
-    },
-  ]
+const getCategory = (item: Model | Tool) => {
+  if ('providerId' in item) return categoryMapping[item.providerId] || 'Other Models';
+  if ('category' in item) return categoryMapping[item.category] || 'Other Tools';
+  return 'General Nodes';
+};
+
+const getIcon = (item: Model | Tool) => {
+  if ('type' in item && item.type === 'video') return Video;
+  if ('category' in item && item.category === 'input') {
+    return item.id === 'textInput' ? FileText : ImageIcon;
+  }
+  if (item.id === 'gemini-3-pro-image-preview') return Sparkles;
+  if (item.id === 'google-search') return Search;
+  return ImageIcon;
+};
+
+const getColor = (item: Model | Tool) => {
+  if (item.id === 'textInput') return 'text-blue-500';
+  if (item.id === 'imageUpload') return 'text-purple-500';
+  if (item.id === 'gemini-2.5-flash-image') return 'text-orange-500';
+  if (item.id === 'gemini-3-pro-image-preview') return 'text-pink-500';
+  if (item.id === 'veo-3.1-generate-preview') return 'text-violet-500';
+  if (item.id === 'google-search') return 'text-blue-400';
+  return 'text-emerald-500';
+};
+
+// Merge all items for category generation
+const ALL_ITEMS = [...(MODELS as (Model | Tool)[]), ...TOOLS.filter(t => t.category === 'input')];
+
+// Generate categories from ALL_ITEMS
+const categoriesSet = new Set(ALL_ITEMS.map(getCategory));
+const nodeCategories = Array.from(categoriesSet)
+  .sort((a, b) => {
+    if (a === 'Input Nodes') return -1;
+    if (b === 'Input Nodes') return 1;
+    return 0;
+  })
+  .map(categoryName => ({
+    category: categoryName,
+    nodes: ALL_ITEMS.filter(item => getCategory(item) === categoryName).map(item => ({
+      id: item.id,
+      name: item.title,
+      description: item.description,
+      icon: getIcon(item),
+      color: getColor(item),
+      badge: (item as Model).badge
+    }))
+  }));
 
 export function NodeLibrary({ onAddNode, onClose, isOpen, workflowName, onRename }: NodeLibraryProps) {
   const [isEditingName, setIsEditingName] = React.useState(false)

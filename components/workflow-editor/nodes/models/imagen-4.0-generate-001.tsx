@@ -17,7 +17,7 @@ const inputSchema = z.object({
     aspectRatio: z.enum(['1:1', '3:4', '4:3', '9:16', '16:9']).optional(),
 });
 
-export const ImagenNode = memo(({ data, selected, id }: NodeProps) => {
+export const Imagen40Generate001Node = memo(({ data, selected, id }: NodeProps) => {
     const params = useParams()
     const workflowId = params?.id as string
     const [isRunning, setIsRunning] = useState(false);
@@ -134,14 +134,14 @@ export const ImagenNode = memo(({ data, selected, id }: NodeProps) => {
     };
 
     const handleDownload = () => {
-        downloadMedia(imageUrl, `imagen-${Date.now()}.png`);
+        downloadMedia(imageUrl, `imagen-4.0-generate-001-${Date.now()}.png`);
     };
 
     return (
         <ImageModelNode
             id={id}
             selected={selected}
-            title="Imagen 3.0" // Changed to 3.0 as 4.0 might not be generally available or was a typo in source? Source said 4.0 but model string was 'imagen-4.0-generate-001' in source. I'll stick to source if it worked, but standard is 3.0. Source had 4.0. I will check.
+            title="imagen-4.0-generate-001"
             icon={ImageIcon}
             iconClassName="bg-gradient-to-br from-emerald-500 to-teal-500"
             isRunning={isRunning}
@@ -155,9 +155,9 @@ export const ImagenNode = memo(({ data, selected, id }: NodeProps) => {
     )
 })
 
-ImagenNode.displayName = 'ImagenNode'
+Imagen40Generate001Node.displayName = 'Imagen40Generate001Node'
 
-export const ImagenProperties = ({ node, onUpdateNode }: { node: any, onUpdateNode: (id: string, data: any) => void }) => {
+export const Imagen40Generate001Properties = ({ node, onUpdateNode }: { node: any, onUpdateNode: (id: string, data: any) => void }) => {
     const handleDataChange = (field: string, value: any) => {
         onUpdateNode(node.id, { [field]: value })
     }
