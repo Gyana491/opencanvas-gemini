@@ -14,6 +14,9 @@ import { resolveImageInput } from '@/lib/utils/image-processing'
 import { downloadMedia } from '@/lib/utils/download'
 import { uploadToR2 } from '@/lib/utils/upload'
 
+import { PROVIDERS } from '@/data/providers';
+
+const googleProvider = PROVIDERS.find(p => p.id === 'google');
 const inputSchema = z.object({
     prompt: z.string().min(1, 'Prompt is required'),
     aspectRatio: z.enum(['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9']).optional(),
@@ -211,8 +214,8 @@ export const Gemini25FlashImageNode = memo(({ data, selected, id }: NodeProps) =
             id={id}
             selected={selected}
             title="gemini-2.5-flash-image"
-            icon={ImageIcon}
-            iconClassName="bg-gradient-to-br from-yellow-500 to-orange-500"
+            icon={googleProvider?.logo || ImageIcon}
+            iconClassName="bg-white"
             isRunning={isRunning}
             imageUrl={output}
             error={error}

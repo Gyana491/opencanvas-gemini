@@ -11,6 +11,9 @@ import { z } from 'zod'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ImageModelNode } from './image-model-node'
 import { downloadMedia } from '@/lib/utils/download'
+import { PROVIDERS } from '@/data/providers';
+
+const googleProvider = PROVIDERS.find(p => p.id === 'google');
 
 const inputSchema = z.object({
     prompt: z.string().min(1, 'Prompt is required'),
@@ -142,8 +145,8 @@ export const Imagen40Generate001Node = memo(({ data, selected, id }: NodeProps) 
             id={id}
             selected={selected}
             title="imagen-4.0-generate-001"
-            icon={ImageIcon}
-            iconClassName="bg-gradient-to-br from-emerald-500 to-teal-500"
+            icon={googleProvider?.logo || ImageIcon}
+            iconClassName="bg-white"
             isRunning={isRunning}
             imageUrl={imageUrl}
             error={error}

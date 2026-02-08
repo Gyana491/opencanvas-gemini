@@ -106,24 +106,19 @@ export const Veo31GeneratePreviewNode = memo(({ data, selected, id }: NodeProps)
     const params = useParams()
     const workflowId = params?.id as string
     const [isRunning, setIsRunning] = useState(false);
-
-    const getInitialVideo = () => {
-        return (data?.output as string) || (data?.videoUrl as string) || (data?.assetPath as string) || ''
-    }
-
-    const [output, setOutput] = useState<string>(getInitialVideo());
-    const [error, setError] = useState<string>('');
-    const [progress, setProgress] = useState<string>('');
-
-    // Get React Flow instance to access current node/edge state
     const { getNodes } = useReactFlow();
     const edges = useEdges();
 
+    const getInitialVideo = () => {
+        return (data?.output as string) || (data?.videoUrl as string) || ''
+    }
+
+    const [videoUrl, setVideoUrl] = useState<string>(getInitialVideo());
+    const [error, setError] = useState<string>('');
+    const [progress, setProgress] = useState<string>('');
+
     const prompt = (data?.connectedPrompt as string) || (data?.prompt as string) || '';
-    const aspectRatio = (data?.aspectRatio as string) || '16:9';
-    const resolution = (data?.resolution as string) || '720p';
-    const durationSeconds = String(data?.durationSeconds || '8');
-    const imageInputCount = (data?.imageInputCount as number) || 0;
+    const imageInputCount = (data?.imageInputCount as number) ?? 0;
 
     const updateNodeInternals = useUpdateNodeInternals();
 
@@ -134,7 +129,6 @@ export const Veo31GeneratePreviewNode = memo(({ data, selected, id }: NodeProps)
 
         let freshPrompt = '';
         const freshImages: { [key: string]: string } = {};
-        let freshVideo = '';
 
         incomingEdges.forEach(edge => {
             const sourceNode = nodes.find(n => n.id === edge.source);
@@ -144,24 +138,22 @@ export const Veo31GeneratePreviewNode = memo(({ data, selected, id }: NodeProps)
 
             // Get prompt from text input
             if (targetHandle === 'prompt') {
-                freshPrompt = getPromptFromSourceNode(sourceNode);
+                if (sourceNode.type === 'textInput') {
+                    freshPrompt = (sourceNode.data?.text as string) || '';
+                }
             }
-            // Get first frame image
-            else if (targetHandle === 'image') {
-                freshImages['image'] = getImageFromSourceNode(sourceNode);
-            }
-            // Get reference images
-            else if (targetHandle?.startsWith('ref_image_')) {
+            // Get images from image handles
+            else if (targetHandle?.startsWith('image_')) {
                 const imageKey = targetHandle;
-                freshImages[imageKey] = getImageFromSourceNode(sourceNode);
-            }
-            // Get video for extension
-            else if (targetHandle === 'video') {
-                freshVideo = getVideoFromSourceNode(sourceNode);
+                if (sourceNode.type === 'imageUpload') {
+                    freshImages[imageKey] = (sourceNode.data?.imageUrl as string) || '';
+                } else if (sourceNode.type === 'gemini-2.5-flash-image' || sourceNode.type === 'gemini-3-pro-image-preview' || sourceNode.type === 'imagen-4.0-generate-001') {
+                    freshImages[imageKey] = (sourceNode.data?.output as string) || '';
+                }
             }
         });
 
-        return { freshPrompt, freshImages, freshVideo };
+        return { freshPrompt, freshImages };
     };
 
     // Notify React Flow when handles change
@@ -172,172 +164,99 @@ export const Veo31GeneratePreviewNode = memo(({ data, selected, id }: NodeProps)
     // Update video URL when data changes (e.g. on load)
     useEffect(() => {
         if (!isRunning) {
-            setOutput(getInitialVideo())
+            setVideoUrl(getInitialVideo())
         }
-    }, [data?.output, data?.videoUrl, data?.assetPath])
+    }, [data?.output, data?.videoUrl])
 
     const handleAddInput = () => {
         if (data?.onUpdateNodeData) {
-            const newCount = imageInputCount + 1;
-            if (newCount <= 3) { // Max 3 reference images
-                (data.onUpdateNodeData as (id: string, data: any) => void)(id, {
-                    imageInputCount: newCount
-                });
-            }
+            (data.onUpdateNodeData as (id: string, data: any) => void)(id, {
+                imageInputCount: imageInputCount + 1
+            });
         }
     };
 
     const inputs = [
         { id: 'prompt', label: 'Prompt', type: 'text', required: true },
-        { id: 'image', label: 'First Frame', type: 'image' },
         ...Array.from({ length: imageInputCount }).map((_, i) => ({
-            id: `ref_image_${i}`,
-            label: `Ref ${i + 1}`,
+            id: `image_${i}`,
+            label: `Ref Image ${i + 1}`,
             type: 'image'
-        })),
-        { id: 'video', label: 'Extend Video', type: 'video' }
+        }))
     ] as any[];
 
     const outputs = (data?.outputs || [
         { id: 'output', label: 'Video', type: 'video' }
     ]) as any[];
 
-    const pollOperationStatus = async (operationName: string): Promise<string> => {
-        const maxAttempts = 120; // 10 minutes with 5 second intervals
+    const pollStatus = async (operationName: string) => {
+        const maxAttempts = 60; // 1 minute timeout (assuming 1s interval)
         let attempts = 0;
 
         while (attempts < maxAttempts) {
-            // Call server-side status endpoint
-            const response = await fetch(
-                `/api/providers/google/veo-3.1-generate-preview/status?name=${encodeURIComponent(operationName)}&workflowId=${encodeURIComponent(workflowId)}&nodeId=${encodeURIComponent(id)}`,
-                {
-                    method: 'GET',
-                }
-            );
+            try {
+                const response = await fetch(`/api/providers/google/veo-3.1-generate-preview/status?name=${encodeURIComponent(operationName)}`);
 
-            if (!response.ok) {
-                // If status check fails, we might want to retry or throw
-                // For now, let's throw but we could implement retry logic for network blips
-                throw new Error(`Failed to check status: ${response.statusText}`);
+                if (!response.ok) {
+                    throw new Error('Failed to check status');
+                }
+
+                const data = await response.json();
+
+                if (data.done) {
+                    if (data.error) {
+                        throw new Error(data.error.message || 'Video generation failed');
+                    }
+                    return data.response; // Should contain the video URI
+                }
+
+                setProgress('Processing...');
+                await new Promise(resolve => setTimeout(resolve, 2000)); // Poll every 2 seconds
+                attempts++;
+            } catch (error) {
+                console.error('Polling error:', error);
+                throw error;
             }
-
-            const result = await response.json();
-
-            if (result.state === 'done') {
-                if (result.error) {
-                    throw new Error(result.error || 'Video generation failed');
-                }
-
-                if (!result.url) {
-                    throw new Error('Completed but no video URL returned');
-                }
-
-                return result.url;
-            } else if (result.state === 'error') {
-                throw new Error(result.error || 'Video generation failed');
-            }
-
-            // Update progress
-            // result.state === 'processing'
-            setProgress(`Processing... (${attempts * 5}s elapsed)`);
-
-            // Wait 5 seconds before next poll
-            await new Promise(resolve => setTimeout(resolve, 5000));
-            attempts++;
         }
-
-        throw new Error('Video generation timed out');
+        throw new Error('Timeout waiting for video generation');
     };
 
     const handleRun = async () => {
         try {
             setIsRunning(true);
             setError('');
-            setProgress('Initializing...');
-
-            // No client-side AP key check needed
+            setProgress('Starting...');
 
             // Get FRESH data from connected nodes
-            const { freshPrompt, freshImages, freshVideo } = getFreshConnectedData();
+            const { freshPrompt, freshImages } = getFreshConnectedData();
             const finalPrompt = freshPrompt || prompt;
 
-            console.log('[Fresh Data]', { freshPrompt, freshImages, freshVideo, finalPrompt });
+            console.log('[Veo Fresh Data]', { freshPrompt, freshImages, finalPrompt });
 
-            inputSchema.parse({
-                prompt: finalPrompt,
-                aspectRatio,
-                resolution,
-                durationSeconds
-            });
+            if (!finalPrompt) {
+                throw new Error('Prompt is required');
+            }
 
-            setProgress('Preparing request...');
-
-            // Build the request body
-            const isVideoExtension = Boolean(freshVideo);
+            // Prepare request body
             const requestBody: any = {
-                instances: [{
-                    prompt: finalPrompt
-                }],
-                parameters: {}
+                prompt: finalPrompt,
+                workflowId,
+                nodeId: id
             };
 
-            if (isVideoExtension) {
-                // Extension currently supports 720p + 8 seconds.
-                requestBody.parameters.resolution = '720p';
-                requestBody.parameters.durationSeconds = '8';
-            } else {
-                requestBody.parameters.aspectRatio = aspectRatio;
-                requestBody.parameters.resolution = resolution;
-                requestBody.parameters.durationSeconds = durationSeconds;
-            }
-
-            // Add video input for extension.
-            if (isVideoExtension) {
-                try {
-                    const { mimeType, base64Data } = await resolveVideoInput(freshVideo);
-                    requestBody.instances[0].video = {
-                        inlineData: {
-                            mimeType: mimeType,
-                            data: base64Data
-                        }
-                    };
-                } catch (e) {
-                    console.error('Failed to resolve extension video', e);
-                    throw new Error('Failed to load extension video from the connected node.');
-                }
-            }
-
-            // Add first frame and reference images only for image/text-to-video mode.
-            if (!isVideoExtension) {
-                if (freshImages['image']) {
-                    try {
-                        const { mimeType, base64Data } = await resolveImageInput(freshImages['image']);
-                        requestBody.instances[0].image = {
-                            inlineData: {
-                                mimeType: mimeType,
-                                data: base64Data
-                            }
-                        };
-                    } catch (e) {
-                        console.error('Failed to resolve first frame image', e);
-                        throw new Error('Failed to load first frame image. Please check the input.');
-                    }
-                }
-
-                const referenceImages = [];
+            // Handle reference images if any
+            if (Object.keys(freshImages).length > 0) {
+                const imageParts = [];
                 for (let i = 0; i < imageInputCount; i++) {
-                    const connectedImage = freshImages[`ref_image_${i}`];
+                    const connectedImage = freshImages[`image_${i}`];
                     if (connectedImage) {
                         try {
                             const { mimeType, base64Data } = await resolveImageInput(connectedImage);
-                            referenceImages.push({
-                                image: {
-                                    inlineData: {
-                                        mimeType: mimeType,
-                                        data: base64Data
-                                    }
-                                },
-                                referenceType: "asset"
+                            imageParts.push({
+                                inlineData: {
+                                    mimeType: mimeType,
+                                    data: base64Data
+                                }
                             });
                         } catch (e) {
                             console.error(`Failed to resolve ref image ${i}`, e);
@@ -346,14 +265,14 @@ export const Veo31GeneratePreviewNode = memo(({ data, selected, id }: NodeProps)
                     }
                 }
 
-                if (referenceImages.length > 0) {
-                    requestBody.parameters.referenceImages = referenceImages;
+                if (imageParts.length > 0) {
+                    requestBody.images = imageParts;
                 }
             }
 
             setProgress('Submitting request...');
 
-            // Start video generation via Server-Side API
+            // Call server-side API to start generation
             const response = await fetch('/api/providers/google/veo-3.1-generate-preview', {
                 method: 'POST',
                 headers: {
@@ -364,48 +283,43 @@ export const Veo31GeneratePreviewNode = memo(({ data, selected, id }: NodeProps)
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.error || `API request failed: ${response.statusText}`);
+                throw new Error(errorData.error || 'Failed to start video generation');
             }
 
-            const result = await response.json();
-            const operationName = result.name;
+            const responseData = await response.json();
 
-            if (!operationName) {
-                throw new Error('No operation name in response');
-            }
+            if (responseData.success && responseData.operationName) {
+                // Start polling
+                const result = await pollStatus(responseData.operationName);
 
-            setProgress('Generating video...');
+                if (result && result.url) {
+                    const assetPathStr = result.url;
+                    setVideoUrl(assetPathStr);
 
-            // Poll for completion (using server-side status endpoint)
-            const videoUrl = await pollOperationStatus(operationName);
+                    if (data?.onUpdateNodeData && typeof data.onUpdateNodeData === 'function') {
+                        (data.onUpdateNodeData as (id: string, data: any) => void)(id, {
+                            output: assetPathStr,
+                            assetPath: assetPathStr,
+                            videoUrl: assetPathStr
+                        });
+                    }
+                } else {
+                    throw new Error('No video URL returned after completion');
+                }
 
-            setProgress('Finalizing...');
-            setOutput(videoUrl);
-
-            if (data?.onUpdateNodeData && typeof data.onUpdateNodeData === 'function') {
-                (data.onUpdateNodeData as (id: string, data: any) => void)(id, {
-                    output: videoUrl,
-                    assetPath: videoUrl,
-                    videoUrl: videoUrl,
-                });
-            }
-
-            setProgress('');
-
-        } catch (err) {
-            if (err instanceof z.ZodError) {
-                setError(err.issues[0].message);
             } else {
-                setError(err instanceof Error ? err.message : 'Failed to generate video');
+                throw new Error('No operation name returned');
             }
-            setProgress('');
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to generate video');
         } finally {
             setIsRunning(false);
+            setProgress('');
         }
     };
 
     const handleDownload = () => {
-        downloadMedia(output, `veo-3.1-generate-preview-${Date.now()}.mp4`);
+        downloadMedia(videoUrl, `veo-3.1-generate-preview-${Date.now()}.mp4`);
     };
 
     return (
@@ -416,7 +330,7 @@ export const Veo31GeneratePreviewNode = memo(({ data, selected, id }: NodeProps)
             icon={Video}
             iconClassName="bg-gradient-to-br from-violet-500 to-indigo-500"
             isRunning={isRunning}
-            videoUrl={output}
+            videoUrl={videoUrl}
             error={error}
             progress={progress}
             onRun={handleRun}

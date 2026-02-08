@@ -17,7 +17,7 @@ interface ImageModelNodeProps {
     id: string
     selected: boolean
     title: string
-    icon: LucideIcon
+    icon: LucideIcon | string
     iconClassName?: string
     isRunning: boolean
     imageUrl?: string
@@ -72,8 +72,12 @@ export function ImageModelNode({
                     {/* Header */}
                     <div className="px-4 py-3 border-b border-zinc-800/50 flex items-center justify-between bg-zinc-900/50 backdrop-blur-sm flex-shrink-0">
                         <div className="flex items-center gap-3">
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shadow-inner ${iconClassName}`}>
-                                <Icon className="w-4 h-4 text-white" />
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shadow-inner ${iconClassName} overflow-hidden`}>
+                                {typeof Icon === 'string' ? (
+                                    <img src={Icon} alt={title} className="w-full h-full object-cover" />
+                                ) : (
+                                    <Icon className="w-4 h-4 text-white" />
+                                )}
                             </div>
                             <h3 className="font-semibold text-sm text-zinc-100 tracking-tight">{title}</h3>
                         </div>
@@ -118,8 +122,12 @@ export function ImageModelNode({
                             </div>
                         ) : (
                             <div className="flex flex-col items-center gap-4 text-zinc-600">
-                                <div className="p-6 rounded-full bg-zinc-900/50 border border-zinc-800/50">
-                                    <Icon className="w-12 h-12 opacity-20" />
+                                <div className="p-6 rounded-full bg-zinc-900/50 border border-zinc-800/50 overflow-hidden">
+                                    {typeof Icon === 'string' ? (
+                                        <img src={Icon} alt={title} className="w-12 h-12 object-contain opacity-50" />
+                                    ) : (
+                                        <Icon className="w-12 h-12 opacity-20" />
+                                    )}
                                 </div>
                                 <p className="text-xs font-medium tracking-wider uppercase opacity-50">Generate {title}</p>
                             </div>

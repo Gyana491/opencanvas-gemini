@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
-import { Search, Sparkles, Zap, Eye, Box, Video, X, FileText, Image as ImageIcon } from "lucide-react"
+import { Search, Sparkles, Zap, Eye, Box, Video, X, FileText, Image as ImageIcon, GripHorizontal, LucideIcon } from "lucide-react"
 import { motion, AnimatePresence } from "motion/react"
 import { MODELS, Model } from "@/data/models"
 import { TOOLS, Tool } from "@/data/tools"
@@ -88,6 +88,11 @@ export function NodeLibrary({ onAddNode, onClose, isOpen, workflowName, onRename
     setIsEditingName(false)
   }
 
+  const onDragStart = (event: React.DragEvent, nodeType: string, nodeId?: string) => {
+    event.dataTransfer.setData('application/reactflow', nodeType);
+    event.dataTransfer.effectAllowed = 'move';
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -142,48 +147,76 @@ export function NodeLibrary({ onAddNode, onClose, isOpen, workflowName, onRename
           </div>
 
           <ScrollArea className="flex-1">
-            <div className="px-3 py-2 space-y-2">
-              {nodeCategories.map((category) => (
-                <div key={category.category}>
-                  <h3 className="text-xs font-semibold mb-1 text-muted-foreground">
-                    {category.category}
-                  </h3>
-                  <div className="space-y-1">
-                    {category.nodes.map((node) => {
-                      const Icon = node.icon
-                      return (
-                        <Card
-                          key={node.id + category.category}
-                          className="p-2 cursor-pointer hover:bg-accent transition-colors relative"
-                          onClick={() => onAddNode(node.id)}
-                          draggable
-                          onDragStart={(event) => {
-                            event.dataTransfer.setData('application/reactflow', node.id)
-                            event.dataTransfer.effectAllowed = 'move'
-                          }}
-                        >
-                          {node.badge && (
-                            <div className="absolute top-1.5 right-1.5 bg-orange-500/20 text-orange-600 dark:text-orange-400 text-[10px] px-1.5 py-0.5 rounded">
-                              {node.badge}
-                            </div>
+            <div className="p-4 space-y-6">
+              {/* Models Section */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wider px-1">Models</h3>
+                <div className="grid grid-cols-1 gap-2">
+                  {MODELS.map((model) => {
+                    const Icon = getIcon(model);
+                    return (
+                      <div
+                        key={model.id}
+                        className="group flex items-center gap-3 p-3 rounded-lg border border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800 hover:border-zinc-700 cursor-grab active:cursor-grabbing transition-all hover:shadow-md"
+                        onDragStart={(event) => onDragStart(event, model.id, model.id)}
+                        draggable
+                      >
+                        <div className="w-8 h-8 rounded-md bg-zinc-800 flex items-center justify-center group-hover:bg-zinc-700 transition-colors overflow-hidden">
+                          {typeof Icon === 'string' ? (
+                            <img src={Icon} alt={model.title} className="w-full h-full object-cover" />
+                          ) : (
+                            <Icon className="w-4 h-4 text-zinc-100" />
                           )}
-                          <div className="flex items-center gap-2">
-                            <div className={`${node.color}`}>
-                              <Icon className="h-4 w-4" />
-                            </div>
-                            <div className="flex-1 min-w-0 pr-5">
-                              <div className="font-medium text-xs">{node.name}</div>
-                              <div className="text-[11px] text-muted-foreground line-clamp-1">
-                                {node.description}
-                              </div>
-                            </div>
-                          </div>
-                        </Card>
-                      )
-                    })}
-                  </div>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium text-zinc-200 group-hover:text-white transition-colors">
+                            {model.title}
+                          </span>
+                          <span className="text-[10px] text-zinc-500 group-hover:text-zinc-400">
+                            {model.providerId === 'google' ? 'Google AI' : 'Model'}
+                          </span>
+                        </div>
+                        <div className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
+                          <GripHorizontal className="w-4 h-4 text-zinc-600" />
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              ))}
+              </div>
+
+              {/* Tools Section */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wider px-1">Tools</h3>
+                <div className="grid grid-cols-1 gap-2">
+                  {TOOLS.map((tool) => {
+                    const Icon = getIcon(tool) as LucideIcon; // Tools use Lucide Icons
+                    return (
+                      <div
+                        key={tool.id}
+                        className="group flex items-center gap-3 p-3 rounded-lg border border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800 hover:border-zinc-700 cursor-grab active:cursor-grabbing transition-all hover:shadow-md"
+                        onDragStart={(event) => onDragStart(event, tool.id, tool.id)}
+                        draggable
+                      >
+                        <div className="w-8 h-8 rounded-md bg-zinc-800 flex items-center justify-center group-hover:bg-zinc-700 transition-colors">
+                          <Icon className="w-4 h-4 text-zinc-100" />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium text-zinc-200 group-hover:text-white transition-colors">
+                            {tool.title}
+                          </span>
+                          <span className="text-[10px] text-zinc-500 group-hover:text-zinc-400">
+                            {tool.category || 'Utility'}
+                          </span>
+                        </div>
+                        <div className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
+                          <GripHorizontal className="w-4 h-4 text-zinc-600" />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </ScrollArea>
         </motion.div>
