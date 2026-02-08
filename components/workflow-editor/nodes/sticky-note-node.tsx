@@ -4,7 +4,6 @@ import { memo } from "react"
 import { type NodeProps, useReactFlow } from "@xyflow/react"
 import { Card } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
-import { StickyNote } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 type StickyColorOption = {
@@ -88,11 +87,7 @@ export const StickyNoteNode = memo(({ id, data, selected }: NodeProps) => {
       }}
     >
       <div className="p-3 space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <StickyNote className="h-4 w-4 text-zinc-900/70" />
-            <span className="text-xs font-semibold uppercase tracking-wide text-zinc-900/80">Sticky Note</span>
-          </div>
+        <div className="flex items-center justify-end gap-3">
           <div className="flex items-center gap-1.5 nodrag nopan nowheel">
             {STICKY_COLOR_OPTIONS.map((option) => (
               <button
@@ -117,7 +112,7 @@ export const StickyNoteNode = memo(({ id, data, selected }: NodeProps) => {
           value={note}
           placeholder="Write a note..."
           className={cn(
-            "min-h-[190px] resize-none border-0 bg-transparent p-0 text-xl font-semibold leading-8 shadow-none focus-visible:ring-0 nodrag nowheel",
+            "min-h-[190px] resize-none border-0 bg-transparent p-0 text-2xl font-semibold leading-9 shadow-none focus-visible:ring-0 nodrag nowheel",
             activeColor.textClassName
           )}
           style={{ fontFamily: HANDWRITING_FONT_STACK }}

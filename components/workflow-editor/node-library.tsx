@@ -115,7 +115,7 @@ export function NodeLibrary({ onAddNode, onClose, isOpen, workflowName, onRename
           animate={{ x: 0 }}
           exit={{ x: '-100%' }}
           transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-          className="w-64 border-r bg-background absolute left-0 top-0 bottom-0 z-40 shadow-lg flex flex-col min-h-0"
+          className="w-[min(20rem,calc(100vw-3.5rem))] sm:w-64 border-r bg-background absolute left-0 top-0 bottom-0 z-40 shadow-lg flex flex-col min-h-0"
         >
           <div className="px-3 py-2 border-b">
             <div className="flex items-center justify-between mb-2 h-8">

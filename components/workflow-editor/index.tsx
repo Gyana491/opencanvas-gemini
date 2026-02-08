@@ -51,6 +51,7 @@ import { MODELS, OUTPUT_HANDLE_IDS, TOOL_OUTPUT_HANDLE_IDS } from '@/data/models
 import { TOOLS } from '@/data/tools'
 import { PaneContextMenu } from './pane-context-menu'
 import { uploadToR2 } from '@/lib/utils/upload'
+import { useIsMobile } from '@/hooks/use-mobile'
 
 const NODES_WITH_PROPERTIES = [
   'imagen-4.0-generate-001',
@@ -345,6 +346,7 @@ function WorkflowEditorInner() {
   const [newName, setNewName] = useState("")
   const [workflowName, setWorkflowName] = useState("")
   const [isInitialGraphLoading, setIsInitialGraphLoading] = useState(true)
+  const isMobile = useIsMobile()
 
   const { createWorkflow, loadWorkflow, saveWorkflow, renameWorkflow, deleteWorkflow, duplicateWorkflow, isLoading } = useWorkflow()
 
@@ -1677,8 +1679,9 @@ function WorkflowEditorInner() {
           </div>
         )}
 
-        {/* Top Right Action Bar - Hidden when properties sidebar is open */}
-        {!isRightSidebarOpen && (
+        {/* Top Right Action Bar - Hidden when properties sidebar is open.
+            On mobile, also hide while node library is open to avoid covering its close button. */}
+        {!isRightSidebarOpen && (!isLibraryOpen || !isMobile) && (
           <div className="absolute top-4 right-4 z-50 flex gap-2">
             <Button
               variant="outline"

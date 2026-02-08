@@ -412,9 +412,9 @@ function SharedWorkflowInner() {
 
   return (
     <div className="flex h-screen flex-col bg-background">
-      <div className="flex items-center justify-between border-b px-4 py-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="flex items-center gap-4">
-          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+      <div className="flex flex-col gap-3 border-b px-3 py-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+        <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+          <Link href="/" className="flex shrink-0 items-center gap-2 hover:opacity-80 transition-opacity">
             <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
               <Image
                 src="/logo.png"
@@ -428,21 +428,21 @@ function SharedWorkflowInner() {
               <span className="truncate font-semibold">OpenCanvas</span>
             </div>
           </Link>
-          <div className="h-6 w-px bg-border" />
-          <div>
-            <p className="text-sm font-semibold">{workflowName}</p>
-            <p className="text-xs text-muted-foreground">{bannerText}</p>
+          <div className="hidden h-6 w-px bg-border sm:block" />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">{workflowName}</p>
+            <p className="text-xs text-muted-foreground sm:truncate">{bannerText}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button onClick={handleDuplicate} disabled={isDuplicating}>
+        <div className="flex w-full items-center gap-2 sm:w-auto">
+          <Button onClick={handleDuplicate} disabled={isDuplicating} className="w-full sm:w-auto">
             <Copy className="mr-2 h-4 w-4" />
             {isDuplicating ? "Duplicating..." : "Duplicate to my account"}
           </Button>
         </div>
       </div>
 
-      <div className="h-full w-full">
+      <div className="min-h-0 flex-1 w-full">
         <ReactFlow
           nodes={nodes}
           edges={edges}
