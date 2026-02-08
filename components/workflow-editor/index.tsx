@@ -1260,6 +1260,10 @@ function WorkflowEditorInner() {
             imageUrl: '',
             fileName: '',
           }),
+          ...(nodeType === 'stickyNote' && {
+            note: '',
+            noteColor: 'yellow',
+          }),
           ...(nodeType === 'gemini-2.5-flash-image' && {
             prompt: '',
             aspectRatio: '1:1',
@@ -1346,6 +1350,10 @@ function WorkflowEditorInner() {
         ...(nodeType === 'imageUpload' && {
           imageUrl: '',
           fileName: '',
+        }),
+        ...(nodeType === 'stickyNote' && {
+          note: '',
+          noteColor: 'yellow',
         }),
         ...(nodeType === 'gemini-2.5-flash-image' && {
           prompt: '',

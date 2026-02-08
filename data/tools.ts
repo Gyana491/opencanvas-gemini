@@ -42,6 +42,13 @@ export const TOOLS: Tool[] = [
         ],
     },
     {
+        id: 'stickyNote',
+        name: 'Sticky Note',
+        title: 'Sticky Note',
+        description: 'A freeform note you can place anywhere on the canvas',
+        category: 'input',
+    },
+    {
         id: 'blur',
         name: 'Blur',
         title: 'Blur',
