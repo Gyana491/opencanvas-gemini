@@ -468,15 +468,15 @@ function WorkflowEditorInner() {
   const generateThumbnail = useCallback(async () => {
     if (!reactFlowWrapper.current || !workflowId || workflowId === 'new') return
 
-    console.log('[Workflow Editor] Thumbnail generation requested', {
-      workflowId,
-      isGenerating: isGeneratingThumbnailRef.current,
-      hasPendingGeneration: pendingThumbnailGenerationRef.current,
-    })
+    // console.log('[Workflow Editor] Thumbnail generation requested', {
+    //   workflowId,
+    //   isGenerating: isGeneratingThumbnailRef.current,
+    //   hasPendingGeneration: pendingThumbnailGenerationRef.current,
+    // })
 
     if (isGeneratingThumbnailRef.current) {
       pendingThumbnailGenerationRef.current = true
-      console.log('[Workflow Editor] Thumbnail generation already in progress, queued follow-up run')
+      // console.log('[Workflow Editor] Thumbnail generation already in progress, queued follow-up run')
       return
     }
     isGeneratingThumbnailRef.current = true
@@ -487,28 +487,12 @@ function WorkflowEditorInner() {
         return Boolean(data?.isUploading)
       })
 
-      const blobUrlCount = nodes.reduce((count, node) => {
-        const data = node.data as Record<string, unknown>
-        const nodeBlobCount = ['imageUrl', 'videoUrl', 'output', 'localPreviewUrl'].reduce((nodeCount, key) => {
-          const value = data[key]
-          return typeof value === 'string' && value.startsWith('blob:') ? nodeCount + 1 : nodeCount
-        }, 0)
-        return count + nodeBlobCount
-      }, 0)
-
-      if (blobUrlCount > 0) {
-        console.log('[Workflow Editor] Blob URLs detected in graph; continuing thumbnail generation', {
-          workflowId,
-          blobUrlCount,
-        })
-      }
-
       if (hasUploadingNodes) {
-        console.log('[Workflow Editor] Thumbnail skipped due to active uploads; scheduling retry', { workflowId })
+        // console.log('[Workflow Editor] Thumbnail skipped due to active uploads; scheduling retry', { workflowId })
         if (!thumbnailRetryTimerRef.current) {
           thumbnailRetryTimerRef.current = setTimeout(() => {
             thumbnailRetryTimerRef.current = null
-            console.log('[Workflow Editor] Retrying thumbnail generation after upload wait', { workflowId })
+            // console.log('[Workflow Editor] Retrying thumbnail generation after upload wait', { workflowId })
             void generateThumbnail()
           }, 3000)
         }
@@ -521,7 +505,7 @@ function WorkflowEditorInner() {
       }
 
       // Extended delay to ensure all images are loaded
-      console.log('[Workflow Editor] Capturing thumbnail image', { workflowId, nodes: nodes.length })
+      // console.log('[Workflow Editor] Capturing thumbnail image', { workflowId, nodes: nodes.length })
       await new Promise(resolve => setTimeout(resolve, 500))
 
       const captureTarget = reactFlowWrapper.current.querySelector('.react-flow__viewport') as HTMLElement | null
@@ -552,11 +536,7 @@ function WorkflowEditorInner() {
           includeQueryParams: true,
           filter: filterNode,
         })
-      } catch (primaryError) {
-        const primaryErrorMessage = formatUnknownError(primaryError)
-        if (primaryErrorMessage) {
-          console.warn(`[Workflow Editor] Primary thumbnail capture failed, retrying with safe options: ${primaryErrorMessage}`)
-        }
+      } catch {
         dataUrl = await toPng(target, {
           backgroundColor: '#fff',
           cacheBust: true,
@@ -569,51 +549,44 @@ function WorkflowEditorInner() {
       const res = await fetch(dataUrl)
       const blob = await res.blob()
       const file = new File([blob], "thumbnail.png", { type: "image/png" })
-      console.log('[Workflow Editor] Thumbnail capture complete', {
-        workflowId,
-        bytes: blob.size,
-        type: blob.type,
-      })
+      // console.log('[Workflow Editor] Thumbnail capture complete', {
+      //   workflowId,
+      //   bytes: blob.size,
+      //   type: blob.type,
+      // })
 
       if (!workflowId || workflowId === 'new') {
-        console.log('[Workflow Editor] persistent ID required for thumbnail generation')
+        // console.log('[Workflow Editor] persistent ID required for thumbnail generation')
         return
       }
 
       const formData = new FormData()
       formData.append('file', file)
 
-      console.log('[Workflow Editor] Uploading thumbnail', { workflowId })
+      // console.log('[Workflow Editor] Uploading thumbnail', { workflowId })
       const uploadRes = await fetch(`/api/workflows/${workflowId}/thumbnail`, {
         method: 'POST',
         body: formData,
       })
 
       if (uploadRes.ok) {
-        console.log('[Workflow Editor] Thumbnail updated', { workflowId })
+        // console.log('[Workflow Editor] Thumbnail updated', { workflowId })
         lastThumbnailTimeRef.current = Date.now()
       } else {
         const errorText = await uploadRes.text()
-        console.error('[Workflow Editor] Failed to update thumbnail:', {
-          workflowId,
-          status: uploadRes.status,
-          statusText: uploadRes.statusText,
-          errorText,
-        })
+        // console.error('[Workflow Editor] Failed to update thumbnail:', {
+        //   workflowId,
+        //   status: uploadRes.status,
+        //   statusText: uploadRes.statusText,
+        //   errorText,
+        // })
       }
-    } catch (error) {
-      const errorMessage = formatUnknownError(error)
-      if (errorMessage) {
-        console.warn('[Workflow Editor] Thumbnail generation skipped', {
-          workflowId,
-          errorMessage,
-        })
-      }
+    } catch {
       // Don't throw - allow the app to continue if thumbnail fails
     } finally {
       isGeneratingThumbnailRef.current = false
       if (pendingThumbnailGenerationRef.current) {
-        console.log('[Workflow Editor] Running queued thumbnail generation')
+        // console.log('[Workflow Editor] Running queued thumbnail generation')
         pendingThumbnailGenerationRef.current = false
         void generateThumbnail()
       }
@@ -646,31 +619,31 @@ function WorkflowEditorInner() {
         const viewport = getViewport()
         const { nodes: safeNodes, edges: safeEdges } = getSerializableGraph(nodes, edges)
 
-        console.log('[Workflow Editor] Auto-saving workflow:', workflowId)
+        // console.log('[Workflow Editor] Auto-saving workflow:', workflowId)
 
         const response = await saveWorkflow(workflowId, safeNodes, safeEdges, viewport)
         if (response.success) {
-          console.log('[Workflow Editor] Auto-saved workflow:', workflowId)
+          // console.log('[Workflow Editor] Auto-saved workflow:', workflowId)
 
           // Check if we should update thumbnail (every 60 seconds)
           if (Date.now() - lastThumbnailTimeRef.current > 60000) {
-            console.log('[Workflow Editor] Auto-save triggering thumbnail generation', {
-              workflowId,
-              lastGeneratedAt: lastThumbnailTimeRef.current,
-            })
+            // console.log('[Workflow Editor] Auto-save triggering thumbnail generation', {
+            //   workflowId,
+            //   lastGeneratedAt: lastThumbnailTimeRef.current,
+            // })
             generateThumbnail()
-          } else {
-            console.log('[Workflow Editor] Thumbnail generation not needed yet', {
-              workflowId,
-              msSinceLastThumbnail: Date.now() - lastThumbnailTimeRef.current,
-            })
-          }
+          } // else {
+          //   console.log('[Workflow Editor] Thumbnail generation not needed yet', {
+          //     workflowId,
+          //     msSinceLastThumbnail: Date.now() - lastThumbnailTimeRef.current,
+          //   })
+          // }
 
         } else {
-          console.error('[Workflow Editor] Auto-save failed:', response.error)
+          // console.error('[Workflow Editor] Auto-save failed:', response.error)
         }
-      } catch (error) {
-        console.error('[Workflow Editor] Auto-save error:', error)
+      } catch {
+        // console.error('[Workflow Editor] Auto-save error:', error)
       }
     }, AUTO_SAVE_DELAY)
 
@@ -1427,21 +1400,21 @@ function WorkflowEditorInner() {
     if (!workflowId) return
 
     try {
-      console.log('[Workflow Editor] Manual save started', { workflowId })
+      // console.log('[Workflow Editor] Manual save started', { workflowId })
       const viewport = getViewport()
       const { nodes: safeNodes, edges: safeEdges } = getSerializableGraph(nodes, edges)
 
       const response = await saveWorkflow(workflowId, safeNodes, safeEdges, viewport)
       if (response.success) {
-        console.log('[Workflow Editor] Manual save triggering thumbnail generation', { workflowId })
+        // console.log('[Workflow Editor] Manual save triggering thumbnail generation', { workflowId })
         await generateThumbnail()
         toast.success('Workflow saved successfully')
-        console.log('[Workflow Editor] Manually saved workflow:', workflowId)
+        // console.log('[Workflow Editor] Manually saved workflow:', workflowId)
       } else {
         toast.error(`Failed to save workflow: ${response.error}`)
       }
-    } catch (error) {
-      console.error('[Workflow Editor] Manual save error:', error)
+    } catch {
+      // console.error('[Workflow Editor] Manual save error:', error)
       toast.error('An error occurred while saving')
     }
   }, [workflowId, getViewport, getSerializableGraph, nodes, edges, saveWorkflow, generateThumbnail])
