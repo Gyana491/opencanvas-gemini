@@ -2,6 +2,55 @@ import { NextRequest, NextResponse } from 'next/server';
 import { uploadFile } from '@/lib/r2';
 import { nanoid } from 'nanoid';
 
+const firstNonEmptyString = (...values: unknown[]): string | undefined => {
+    for (const value of values) {
+        if (typeof value === 'string' && value.trim()) {
+            return value;
+        }
+    }
+    return undefined;
+};
+
+const extractVideoUri = (result: any): string | undefined => {
+    const directUri = firstNonEmptyString(
+        result?.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri,
+        result?.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.downloadUri,
+        result?.response?.generatedVideos?.[0]?.video?.uri,
+        result?.response?.generatedVideos?.[0]?.video?.downloadUri,
+        result?.response?.generatedVideos?.[0]?.uri,
+        result?.response?.generated_videos?.[0]?.video?.uri,
+        result?.response?.generated_videos?.[0]?.video?.download_uri,
+        result?.response?.generated_videos?.[0]?.uri,
+    );
+
+    if (directUri) {
+        return directUri;
+    }
+
+    const fileName = firstNonEmptyString(
+        result?.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.name,
+        result?.response?.generatedVideos?.[0]?.video?.name,
+        result?.response?.generated_videos?.[0]?.video?.name
+    );
+
+    if (fileName) {
+        const cleanFileName = fileName.replace(/^\/+/, '');
+        return `https://generativelanguage.googleapis.com/v1beta/${cleanFileName}:download`;
+    }
+
+    return undefined;
+};
+
+const extractInlineBase64Video = (result: any): string | undefined => {
+    return firstNonEmptyString(
+        result?.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.bytesBase64Encoded,
+        result?.response?.generatedVideos?.[0]?.video?.bytesBase64Encoded,
+        result?.response?.generatedVideos?.[0]?.video?.videoBytes,
+        result?.response?.generated_videos?.[0]?.video?.bytes_base64_encoded,
+        result?.response?.generated_videos?.[0]?.video?.video_bytes,
+    );
+};
+
 export async function GET(req: NextRequest) {
     try {
         const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
@@ -21,7 +70,9 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: 'Missing operation name' }, { status: 400 });
         }
 
-        // Check operation status
+        // Check operation status using fetch
+        // Note: getVideosOperation requires the full operation object from generateVideos,
+        // but this route only receives the operation name. Using fetch for name-based lookup.
         const response = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/${name}`,
             {
@@ -35,30 +86,50 @@ export async function GET(req: NextRequest) {
             throw new Error(`Failed to check operation status: ${response.statusText}`);
         }
 
-        const result = await response.json();
+        const result: any = await response.json();
 
         if (result.done) {
             if (result.error) {
                 return NextResponse.json({ state: 'error', error: result.error.message });
             }
 
-            const videoUri = result.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri;
-            if (!videoUri) {
-                return NextResponse.json({ state: 'error', error: 'No video URI in response' });
+            let videoBuffer: Buffer | undefined;
+            const inlineBase64Video = extractInlineBase64Video(result);
+
+            if (inlineBase64Video) {
+                videoBuffer = Buffer.from(inlineBase64Video, 'base64');
+            } else {
+                const videoUri = extractVideoUri(result);
+                if (!videoUri) {
+                    return NextResponse.json({
+                        state: 'error',
+                        error: 'No video URL in response',
+                        details: { responseKeys: Object.keys(result?.response || {}) }
+                    });
+                }
+
+                // Download the video server-side
+                // Using fetch here is acceptable as it's a file download, not an API call per se.
+                // But we should header inject the key if needed.
+                // skill.md suggests appending key for veos.
+                // The URL construction logic in extractVideoUri does not append key by default unless it's the specific download endpoint.
+
+                // If it is 'generativelanguage...:download', it needs auth.
+                // If it is a public URI (unlikely for Veo), it might not.
+                // Assuming auth needed.
+                const videoResponse = await fetch(videoUri, {
+                    headers: {
+                        'x-goog-api-key': apiKey,
+                    },
+                });
+
+                if (!videoResponse.ok) {
+                    throw new Error(`Failed to download video: ${videoResponse.statusText}`);
+                }
+
+                videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
             }
 
-            // Download the video server-side
-            const videoResponse = await fetch(videoUri, {
-                headers: {
-                    'x-goog-api-key': apiKey,
-                },
-            });
-
-            if (!videoResponse.ok) {
-                throw new Error(`Failed to download video: ${videoResponse.statusText}`);
-            }
-
-            const videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
             const fileName = `veo_${Date.now()}_${nanoid()}.mp4`;
 
             const storageKey = workflowId
@@ -66,9 +137,13 @@ export async function GET(req: NextRequest) {
                 : `temp/${nanoid()}/${fileName}`;
 
             // Upload to R2
+            if (!videoBuffer) {
+                return NextResponse.json({ state: 'error', error: 'Unable to resolve generated video data' });
+            }
+
             const url = await uploadFile(videoBuffer, storageKey, 'video/mp4');
 
-            return NextResponse.json({ state: 'done', url, videoUri }); // videoUri kept for reference if needed, but url is main
+            return NextResponse.json({ state: 'done', url });
         }
 
         return NextResponse.json({ state: 'processing' });

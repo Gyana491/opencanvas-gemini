@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { uploadFile } from '@/lib/r2';
 import { nanoid } from 'nanoid';
+import { GoogleGenAI } from '@google/genai';
 
 export async function POST(req: NextRequest) {
     try {
@@ -15,41 +16,30 @@ export async function POST(req: NextRequest) {
         const body = await req.json();
         const { workflowId, nodeId, ...googleBody } = body;
 
-        // Forward the request to Google API
-        const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${apiKey}`,
-            {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    ...googleBody,
-                    contents: [{
-                        parts: [
-                            { text: "Generate an image of " + googleBody.contents[0].parts[0].text },
-                            ...googleBody.contents[0].parts.slice(1)
-                        ]
-                    }]
-                }),
-            }
-        );
+        const ai = new GoogleGenAI({ apiKey });
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            return NextResponse.json(
-                { error: `Google API Error: ${response.statusText}`, details: errorText },
-                { status: response.status }
-            );
-        }
+        const promptText = "Generate an image of " + (googleBody.contents?.[0]?.parts?.[0]?.text || "");
+        const otherParts = googleBody.contents?.[0]?.parts?.slice(1) || [];
 
-        const data = await response.json();
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: [
+                {
+                    parts: [
+                        { text: promptText },
+                        ...otherParts
+                    ]
+                }
+            ],
+            // Pass configuration if any exists in googleBody, mostly generationConfig
+            config: googleBody.generationConfig
+        });
 
         // Extract image data
-        const parts = data.candidates?.[0]?.content?.parts || [];
+        const parts = response.candidates?.[0]?.content?.parts || [];
         const imagePart = parts.find((p: any) => p.inlineData?.mimeType?.startsWith('image/'));
 
-        if (imagePart) {
+        if (imagePart && imagePart.inlineData && imagePart.inlineData.mimeType && imagePart.inlineData.data) {
             const mimeType = imagePart.inlineData.mimeType;
             const base64Data = imagePart.inlineData.data;
             const buffer = Buffer.from(base64Data, 'base64');
@@ -62,21 +52,18 @@ export async function POST(req: NextRequest) {
 
             const url = await uploadFile(buffer, storageKey, mimeType);
 
-            // Replace the inline data with the URL in the response or just return the URL
-            // To keep semblance of original structure but with URL, we can return a simplified object
-            // or modify the parts. Let's return a specific success structure for our client.
             return NextResponse.json({
                 url,
                 success: true,
-                originalResponse: data // Optional: keep if client needs other data like text
+                originalResponse: response
             });
         }
 
-        return NextResponse.json(data);
-    } catch (error) {
+        return NextResponse.json(response);
+    } catch (error: any) {
         console.error('Error in gemini-2.5-flash-image route:', error);
         return NextResponse.json(
-            { error: 'Internal Server Error' },
+            { error: error.message || 'Internal Server Error' },
             { status: 500 }
         );
     }

@@ -20,12 +20,12 @@ export async function GET(req: NextRequest) {
             );
         }
 
-        // Forward the request to Google API
-        // https://generativelanguage.googleapis.com/v1beta/{name}
+        // Get operation status using fetch
+        // Note: getVideosOperation requires the full operation object from generateVideos,
+        // but this route only receives the operation name. Using fetch for name-based lookup.
         const response = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/${name}`,
             {
-                method: 'GET',
                 headers: {
                     'x-goog-api-key': apiKey,
                 },
@@ -33,19 +33,17 @@ export async function GET(req: NextRequest) {
         );
 
         if (!response.ok) {
-            const errorText = await response.text();
-            return NextResponse.json(
-                { error: `Google API Error: ${response.statusText}`, details: errorText },
-                { status: response.status }
-            );
+            throw new Error(`Failed to check operation status: ${response.statusText}`);
         }
 
-        const data = await response.json();
-        return NextResponse.json(data);
-    } catch (error) {
+        const result = await response.json();
+
+        return NextResponse.json(result);
+
+    } catch (error: any) {
         console.error('Error in operations route:', error);
         return NextResponse.json(
-            { error: 'Internal Server Error' },
+            { error: error.message || 'Internal Server Error' },
             { status: 500 }
         );
     }

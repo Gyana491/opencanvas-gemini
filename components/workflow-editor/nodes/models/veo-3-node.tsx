@@ -2,17 +2,14 @@
 
 import { memo, useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
-import { Handle, Position, NodeProps, useUpdateNodeInternals, useReactFlow, useEdges } from '@xyflow/react'
-import { Card } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { NodeProps, useUpdateNodeInternals, useReactFlow, useEdges } from '@xyflow/react'
 import { Label } from '@/components/ui/label'
-import { Video, Loader2, AlertCircle, Download } from 'lucide-react'
+import { Video } from 'lucide-react'
 import { z } from 'zod'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { VideoModelNode } from './video-model-node'
 import { resolveImageInput } from '@/lib/utils/image-processing'
 import { downloadMedia } from '@/lib/utils/download'
-import { uploadToR2 } from '@/lib/utils/upload'
 
 const inputSchema = z.object({
     prompt: z.string().min(1, 'Prompt is required'),
@@ -24,13 +21,94 @@ const inputSchema = z.object({
     ]).optional(),
 });
 
+const getStringField = (value: unknown): string => typeof value === 'string' ? value : '';
+
+const getPromptFromSourceNode = (sourceNode: any): string => {
+    if (sourceNode?.type === 'textInput') {
+        return getStringField(sourceNode?.data?.text);
+    }
+
+    return (
+        getStringField(sourceNode?.data?.output) ||
+        getStringField(sourceNode?.data?.prompt) ||
+        getStringField(sourceNode?.data?.connectedPrompt)
+    );
+};
+
+const getImageFromSourceNode = (sourceNode: any): string => {
+    if (sourceNode?.type === 'imageUpload') {
+        return getStringField(sourceNode?.data?.imageUrl);
+    }
+
+    return (
+        getStringField(sourceNode?.data?.output) ||
+        getStringField(sourceNode?.data?.imageUrl) ||
+        getStringField(sourceNode?.data?.assetPath) ||
+        getStringField(sourceNode?.data?.connectedImage)
+    );
+};
+
+const getVideoFromSourceNode = (sourceNode: any): string => {
+    return (
+        getStringField(sourceNode?.data?.output) ||
+        getStringField(sourceNode?.data?.videoUrl) ||
+        getStringField(sourceNode?.data?.assetPath)
+    );
+};
+
+const resolveVideoInput = async (input: string): Promise<{ mimeType: string, base64Data: string }> => {
+    if (!input) {
+        throw new Error('Input video string is empty');
+    }
+
+    const dataUrlMatch = input.match(/^data:(video\/[a-z0-9.+-]+);base64,(.+)$/i);
+    if (dataUrlMatch) {
+        return {
+            mimeType: dataUrlMatch[1],
+            base64Data: dataUrlMatch[2]
+        };
+    }
+
+    const response = await fetch(input);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch video from URL: ${input}`);
+    }
+
+    const blob = await response.blob();
+    const mimeType = blob.type || 'video/mp4';
+
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const result = reader.result as string;
+            if (!result) {
+                reject(new Error('Failed to convert video to base64'));
+                return;
+            }
+
+            const base64Data = result.split(',')[1];
+            if (!base64Data) {
+                reject(new Error('Failed to parse video base64 payload'));
+                return;
+            }
+
+            resolve({
+                mimeType,
+                base64Data
+            });
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+};
+
 export const Veo3Node = memo(({ data, selected, id }: NodeProps) => {
     const params = useParams()
     const workflowId = params?.id as string
     const [isRunning, setIsRunning] = useState(false);
 
     const getInitialVideo = () => {
-        return (data?.output as string) || ''
+        return (data?.output as string) || (data?.videoUrl as string) || (data?.assetPath as string) || ''
     }
 
     const [output, setOutput] = useState<string>(getInitialVideo());
@@ -66,32 +144,20 @@ export const Veo3Node = memo(({ data, selected, id }: NodeProps) => {
 
             // Get prompt from text input
             if (targetHandle === 'prompt') {
-                if (sourceNode.type === 'textInput') {
-                    freshPrompt = (sourceNode.data?.text as string) || '';
-                }
+                freshPrompt = getPromptFromSourceNode(sourceNode);
             }
             // Get first frame image
             else if (targetHandle === 'image') {
-                if (sourceNode.type === 'imageUpload') {
-                    freshImages['image'] = (sourceNode.data?.imageUrl as string) || '';
-                } else if (sourceNode.type === 'nanoBanana' || sourceNode.type === 'nanoBananaPro' || sourceNode.type === 'imagen') {
-                    freshImages['image'] = (sourceNode.data?.output as string) || '';
-                }
+                freshImages['image'] = getImageFromSourceNode(sourceNode);
             }
             // Get reference images
             else if (targetHandle?.startsWith('ref_image_')) {
                 const imageKey = targetHandle;
-                if (sourceNode.type === 'imageUpload') {
-                    freshImages[imageKey] = (sourceNode.data?.imageUrl as string) || '';
-                } else if (sourceNode.type === 'nanoBanana' || sourceNode.type === 'nanoBananaPro' || sourceNode.type === 'imagen') {
-                    freshImages[imageKey] = (sourceNode.data?.output as string) || '';
-                }
+                freshImages[imageKey] = getImageFromSourceNode(sourceNode);
             }
             // Get video for extension
             else if (targetHandle === 'video') {
-                if (sourceNode.type === 'veo3') {
-                    freshVideo = (sourceNode.data?.output as string) || '';
-                }
+                freshVideo = getVideoFromSourceNode(sourceNode);
             }
         });
 
@@ -108,7 +174,7 @@ export const Veo3Node = memo(({ data, selected, id }: NodeProps) => {
         if (!isRunning) {
             setOutput(getInitialVideo())
         }
-    }, [data?.output])
+    }, [data?.output, data?.videoUrl, data?.assetPath])
 
     const handleAddInput = () => {
         if (data?.onUpdateNodeData) {
@@ -207,50 +273,82 @@ export const Veo3Node = memo(({ data, selected, id }: NodeProps) => {
             setProgress('Preparing request...');
 
             // Build the request body
+            const isVideoExtension = Boolean(freshVideo);
             const requestBody: any = {
                 instances: [{
                     prompt: finalPrompt
                 }],
-                parameters: {
-                    aspectRatio: aspectRatio,
-                    // resolution, durationSeconds handled by API if supported, or default
-                }
+                parameters: {}
             };
 
-            // Add first frame image if connected
-            if (freshImages['image']) {
+            if (isVideoExtension) {
+                // Extension currently supports 720p + 8 seconds.
+                requestBody.parameters.resolution = '720p';
+                requestBody.parameters.durationSeconds = '8';
+            } else {
+                requestBody.parameters.aspectRatio = aspectRatio;
+                requestBody.parameters.resolution = resolution;
+                requestBody.parameters.durationSeconds = durationSeconds;
+            }
+
+            // Add video input for extension.
+            if (isVideoExtension) {
                 try {
-                    const { mimeType, base64Data } = await resolveImageInput(freshImages['image']);
-                    requestBody.instances[0].image = {
-                        bytesBase64Encoded: base64Data,
-                        mimeType: mimeType
+                    const { mimeType, base64Data } = await resolveVideoInput(freshVideo);
+                    requestBody.instances[0].video = {
+                        inlineData: {
+                            mimeType: mimeType,
+                            data: base64Data
+                        }
                     };
                 } catch (e) {
-                    console.error('Failed to resolve first frame image', e);
-                    throw new Error('Failed to load first frame image. Please check the input.');
+                    console.error('Failed to resolve extension video', e);
+                    throw new Error('Failed to load extension video from the connected node.');
                 }
             }
 
-            // Add reference images if connected (up to 3)
-            const referenceImages = [];
-            for (let i = 0; i < imageInputCount; i++) {
-                const connectedImage = freshImages[`ref_image_${i}`];
-                if (connectedImage) {
+            // Add first frame and reference images only for image/text-to-video mode.
+            if (!isVideoExtension) {
+                if (freshImages['image']) {
                     try {
-                        const { mimeType, base64Data } = await resolveImageInput(connectedImage);
-                        referenceImages.push({
-                            bytesBase64Encoded: base64Data,
-                            mimeType: mimeType,
-                            referenceType: "asset"
-                        });
+                        const { mimeType, base64Data } = await resolveImageInput(freshImages['image']);
+                        requestBody.instances[0].image = {
+                            inlineData: {
+                                mimeType: mimeType,
+                                data: base64Data
+                            }
+                        };
                     } catch (e) {
-                        console.error(`Failed to resolve ref image ${i}`, e);
+                        console.error('Failed to resolve first frame image', e);
+                        throw new Error('Failed to load first frame image. Please check the input.');
                     }
                 }
-            }
 
-            if (referenceImages.length > 0) {
-                requestBody.parameters.referenceImages = referenceImages;
+                const referenceImages = [];
+                for (let i = 0; i < imageInputCount; i++) {
+                    const connectedImage = freshImages[`ref_image_${i}`];
+                    if (connectedImage) {
+                        try {
+                            const { mimeType, base64Data } = await resolveImageInput(connectedImage);
+                            referenceImages.push({
+                                image: {
+                                    inlineData: {
+                                        mimeType: mimeType,
+                                        data: base64Data
+                                    }
+                                },
+                                referenceType: "asset"
+                            });
+                        } catch (e) {
+                            console.error(`Failed to resolve ref image ${i}`, e);
+                            throw new Error(`Failed to load reference image ${i + 1}. Please check the connected input.`);
+                        }
+                    }
+                }
+
+                if (referenceImages.length > 0) {
+                    requestBody.parameters.referenceImages = referenceImages;
+                }
             }
 
             setProgress('Submitting request...');
@@ -288,6 +386,7 @@ export const Veo3Node = memo(({ data, selected, id }: NodeProps) => {
                 (data.onUpdateNodeData as (id: string, data: any) => void)(id, {
                     output: videoUrl,
                     assetPath: videoUrl,
+                    videoUrl: videoUrl,
                 });
             }
 

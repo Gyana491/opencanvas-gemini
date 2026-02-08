@@ -356,17 +356,19 @@ function WorkflowEditorInner() {
         skipAutoScale: true,
         includeQueryParams: true,
         filter: (node: HTMLElement) => {
+          // Guard against null/undefined nodes
+          if (!node || !node.classList) {
+            return true
+          }
           // Exclude controls, minimap, and panels
-          if (node.classList) {
-            const excludeClasses = [
-              'react-flow__controls',
-              'react-flow__minimap', 
-              'react-flow__panel',
-              'react-flow__attribution'
-            ]
-            if (excludeClasses.some(cls => node.classList.contains(cls))) {
-              return false
-            }
+          const excludeClasses = [
+            'react-flow__controls',
+            'react-flow__minimap',
+            'react-flow__panel',
+            'react-flow__attribution'
+          ]
+          if (excludeClasses.some(cls => node.classList.contains(cls))) {
+            return false
           }
           return true
         }
@@ -491,8 +493,12 @@ function WorkflowEditorInner() {
             } else if (sourceNode.data.output) {
               connectedData.connectedPrompt = sourceNode.data.output
             }
-          } else if (targetHandle === 'image' || targetHandle?.startsWith('image_')) {
-            const dataKey = targetHandle === 'image' ? 'connectedImage' : `connectedImage_${targetHandle.split('_')[1]}`
+          } else if (targetHandle === 'image' || targetHandle?.startsWith('image_') || targetHandle?.startsWith('ref_image_')) {
+            const dataKey = targetHandle === 'image'
+              ? 'connectedImage'
+              : targetHandle?.startsWith('ref_image_')
+                ? `connectedRefImage_${targetHandle.split('_')[2]}`
+                : `connectedImage_${targetHandle.split('_')[1]}`
 
             if (sourceNode.type === 'imageUpload') {
               connectedData[dataKey] = sourceNode.data.imageUrl || ''
@@ -502,6 +508,12 @@ function WorkflowEditorInner() {
             } else if (sourceNode.data.imageOutput) {
               connectedData[dataKey] = sourceNode.data.imageOutput
             }
+          } else if (targetHandle === 'video') {
+            connectedData.connectedVideo =
+              sourceNode.data.output ||
+              sourceNode.data.videoUrl ||
+              sourceNode.data.assetPath ||
+              ''
           }
         })
 
