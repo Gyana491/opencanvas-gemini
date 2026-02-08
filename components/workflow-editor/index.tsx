@@ -9,6 +9,7 @@ import {
   Controls,
   ControlButton,
   addEdge,
+  reconnectEdge,
   useNodesState,
   useEdgesState,
   useReactFlow,
@@ -85,6 +86,9 @@ const EDGE_COLORS = {
   video: '#a78bfa', // violet-400
   default: '#94a3b8', // slate-400
 } as const
+const EDGE_STROKE_WIDTH = 2.5
+const EDGE_MARKER_SIZE = 16
+const EDGE_INTERACTION_WIDTH = 28
 
 function getKindFromSourceHandle(sourceHandle?: string | null): HandleKind | null {
   if (!sourceHandle) {
@@ -105,6 +109,22 @@ function getKindFromSourceHandle(sourceHandle?: string | null): HandleKind | nul
 function getEdgeColorFromSourceHandle(sourceHandle?: string | null): string {
   const kind = getKindFromSourceHandle(sourceHandle)
   return kind ? EDGE_COLORS[kind] : EDGE_COLORS.default
+}
+
+function getEdgeVisualProps(sourceHandle: string | null | undefined, animated: boolean) {
+  const stroke = getEdgeColorFromSourceHandle(sourceHandle)
+
+  return {
+    animated,
+    interactionWidth: EDGE_INTERACTION_WIDTH,
+    style: { stroke, strokeWidth: EDGE_STROKE_WIDTH },
+    markerEnd: {
+      type: MarkerType.ArrowClosed,
+      color: stroke,
+      width: EDGE_MARKER_SIZE,
+      height: EDGE_MARKER_SIZE,
+    },
+  }
 }
 
 function getNodeHandles(nodeType: string | undefined, data?: any): NodeHandleMeta {
@@ -153,6 +173,7 @@ function WorkflowEditorInner() {
   const [isLibraryOpen, setIsLibraryOpen] = useState(true)
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false)
   const [connectingSourceHandle, setConnectingSourceHandle] = useState<string | null>(null)
+  const [reconnectingEdgeId, setReconnectingEdgeId] = useState<string | null>(null)
   const [isAnimated, setIsAnimated] = useState(true)
   const { screenToFlowPosition, setViewport, getViewport, getNodes, getEdges } = useReactFlow()
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false)
@@ -212,7 +233,12 @@ function WorkflowEditorInner() {
 
             setWorkflowName(workflow.name)
             setNodes((loadedNodes || []) as Node<WorkflowNodeData>[])
-            setEdges(loadedEdges || [])
+            setEdges(
+              (loadedEdges || []).map((edge: Edge) => ({
+                ...edge,
+                ...getEdgeVisualProps(edge.sourceHandle, edge.animated ?? true),
+              }))
+            )
             if (viewport) {
               setViewport(viewport, { duration: 0 })
             }
@@ -449,7 +475,12 @@ function WorkflowEditorInner() {
             } else if (sourceNode.data.output) {
               connectedData.connectedPrompt = sourceNode.data.output
             }
-          } else if (targetHandle === 'image' || targetHandle === 'imageOutput' || targetHandle?.startsWith('image_') || targetHandle?.startsWith('ref_image_')) {
+          } else if (
+            targetHandle === 'image' ||
+            targetHandle === 'imageOutput' ||
+            targetHandle?.startsWith('image_') ||
+            targetHandle?.startsWith('ref_image_')
+          ) {
             const dataKey = (targetHandle === 'image' || targetHandle === 'imageOutput')
               ? 'connectedImage'
               : targetHandle?.startsWith('ref_image_')
@@ -465,13 +496,17 @@ function WorkflowEditorInner() {
               connectedData[dataKey] =
                 sourceNode.data.output ||
                 (typeof sourceNode.data.getOutput === 'function' ? sourceNode.data.getOutput() : null)
+            } else if (sourceNode.type === 'crop') {
+              connectedData[dataKey] =
+                sourceNode.data.imageOutput ||
+                (typeof sourceNode.data.getOutput === 'function' ? sourceNode.data.getOutput() : null)
             } else if (sourceNode.data.imageOutput) {
               connectedData[dataKey] = sourceNode.data.imageOutput
             } else if (sourceNode.data.output) {
               // Fallback for any node with output field
               connectedData[dataKey] = sourceNode.data.output
             }
-          } else if (targetHandle === 'video') {
+          } else if (targetHandle === 'video' || targetHandle === OUTPUT_HANDLE_IDS.video) {
             connectedData.connectedVideo =
               sourceNode.data.output ||
               sourceNode.data.videoUrl ||
@@ -497,6 +532,22 @@ function WorkflowEditorInner() {
                 output: null,
                 imageOutput: null,
                 getOutput: null,
+              },
+            }
+          }
+        }
+
+        if (node.type === 'crop' && !hasImageEdge) {
+          if (node.data.connectedImage) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                connectedImage: '',
+                output: null,
+                imageOutput: null,
+                getOutput: null,
+                cropRect: null,
               },
             }
           }
@@ -548,8 +599,12 @@ function WorkflowEditorInner() {
       }
 
       // Prevent multiple connections to the same target handle
+      const currentEdgeId = 'id' in edgeOrConnection ? edgeOrConnection.id : reconnectingEdgeId
       const existingConnection = edges.find(
-        (edge) => edge.target === target && edge.targetHandle === targetHandle
+        (edge) =>
+          edge.target === target &&
+          edge.targetHandle === targetHandle &&
+          edge.id !== currentEdgeId
       )
       if (existingConnection) {
         return false // Target handle already has a connection
@@ -565,19 +620,16 @@ function WorkflowEditorInner() {
       }
       return (targetInput.allowedSourceIds || []).includes(sourceHandle)
     },
-    [nodes, edges]
+    [nodes, edges, reconnectingEdgeId]
   )
 
   const onConnect = useCallback(
     (connection: Connection) => {
-      const stroke = getEdgeColorFromSourceHandle(connection.sourceHandle)
       setEdges((eds) =>
         addEdge(
           {
             ...connection,
-            animated: isAnimated,
-            style: { stroke, strokeWidth: 2 },
-            markerEnd: { type: MarkerType.ArrowClosed, color: stroke },
+            ...getEdgeVisualProps(connection.sourceHandle, isAnimated),
           },
           eds
         )
@@ -593,6 +645,34 @@ function WorkflowEditorInner() {
   }, [])
 
   const onConnectEnd = useCallback(() => {
+    setConnectingSourceHandle(null)
+  }, [])
+
+  const onReconnect = useCallback(
+    (oldEdge: Edge, newConnection: Connection) => {
+      setEdges((eds) => {
+        const reconnectedEdges = reconnectEdge(oldEdge, newConnection, eds, { shouldReplaceId: false })
+
+        return reconnectedEdges.map((edge) =>
+          edge.id === oldEdge.id
+            ? {
+                ...edge,
+                ...getEdgeVisualProps(newConnection.sourceHandle, isAnimated),
+              }
+            : edge
+        )
+      })
+    },
+    [setEdges, isAnimated]
+  )
+
+  const onReconnectStart = useCallback((_: React.MouseEvent, edge: Edge) => {
+    setReconnectingEdgeId(edge.id)
+    setConnectingSourceHandle(edge.sourceHandle ?? null)
+  }, [])
+
+  const onReconnectEnd = useCallback(() => {
+    setReconnectingEdgeId(null)
     setConnectingSourceHandle(null)
   }, [])
 
@@ -659,6 +739,12 @@ function WorkflowEditorInner() {
             bGamma: 1,
             bInMax: 255,
             linkChannels: true,
+          }),
+          ...(nodeType === 'crop' && {
+            aspectRatio: 'free',
+            cropWidth: 0,
+            cropHeight: 0,
+            lockAspect: true,
           }),
           ...getNodeHandles(nodeType, {}),
           onUpdateNodeData: updateNodeData,
@@ -732,6 +818,12 @@ function WorkflowEditorInner() {
           bGamma: 1,
           bInMax: 255,
           linkChannels: true,
+        }),
+        ...(nodeType === 'crop' && {
+          aspectRatio: 'free',
+          cropWidth: 0,
+          cropHeight: 0,
+          lockAspect: true,
         }),
         ...getNodeHandles(nodeType),
         onUpdateNodeData: updateNodeData,
@@ -1043,9 +1135,12 @@ function WorkflowEditorInner() {
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
+              onReconnect={onReconnect}
               isValidConnection={isValidConnection}
               onConnectStart={onConnectStart}
               onConnectEnd={onConnectEnd}
+              onReconnectStart={onReconnectStart}
+              onReconnectEnd={onReconnectEnd}
               onNodeClick={onNodeClick}
               onEdgeContextMenu={(event, edge) => {
                 event.preventDefault()
@@ -1062,6 +1157,7 @@ function WorkflowEditorInner() {
               onDrop={onDrop}
               onDragOver={onDragOver}
               nodeTypes={workflowNodeTypes}
+              edgesReconnectable
               connectionLineStyle={{
                 stroke: getEdgeColorFromSourceHandle(connectingSourceHandle),
               }}

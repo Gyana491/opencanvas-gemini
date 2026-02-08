@@ -84,5 +84,27 @@ export const TOOLS: Tool[] = [
                 type: 'image',
             },
         ],
+    },
+    {
+        id: 'crop',
+        name: 'Crop',
+        title: 'Crop',
+        description: 'Crop images with aspect ratio and dimensions',
+        category: 'media',
+        inputs: [
+            {
+                id: OUTPUT_HANDLE_IDS.image,
+                label: 'Image',
+                type: 'image',
+                allowedSourceIds: [OUTPUT_HANDLE_IDS.image],
+            },
+        ],
+        outputs: [
+            {
+                id: OUTPUT_HANDLE_IDS.image,
+                label: 'Image',
+                type: 'image',
+            },
+        ],
     }
 ];
