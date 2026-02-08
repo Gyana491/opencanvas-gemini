@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, Suspense } from "react"
+import { useEffect, useState, Suspense } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { z } from "zod"
@@ -46,11 +46,18 @@ export default function LoginPage() {
 function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { data: session, isPending } = authClient.useSession()
   const [isLoading, setIsLoading] = useState(false)
   const [isGoogleLoading, setIsGoogleLoading] = useState(false)
 
   // Get the redirect URL from query params, default to /dashboard
   const redirectTo = searchParams.get('from') || '/dashboard'
+
+  useEffect(() => {
+    if (!isPending && session) {
+      router.replace(redirectTo)
+    }
+  }, [isPending, session, router, redirectTo])
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -95,6 +102,18 @@ function LoginContent() {
       toast.error("Failed to sign in with Google")
       setIsGoogleLoading(false)
     }
+  }
+
+  if (isPending) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-4">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (session) {
+    return null
   }
 
   return (

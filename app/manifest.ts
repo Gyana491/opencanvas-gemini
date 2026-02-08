@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "OpenCanvas",
     short_name: "OpenCanvas",
     description: "Node-based AI workflow orchestration platform",
-    start_url: "/login",
+    start_url: "/dashboard",
     scope: "/",
     display: "standalone",
     orientation: "portrait",
