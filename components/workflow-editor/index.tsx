@@ -229,6 +229,10 @@ function stripRuntimeDataFromNodeData<T extends Record<string, unknown>>(nodeTyp
       continue
     }
 
+    if (key === 'isUploading' || key === 'uploadError' || key === 'localPreviewUrl') {
+      continue
+    }
+
     cleaned[key] = value
   }
 
@@ -847,19 +851,10 @@ function WorkflowEditorInner() {
         }
 
         const basePosition = screenToFlowPosition({ x: dropX, y: dropY })
-        const uploadedUrls: string[] = []
-
         for (let index = 0; index < imageFiles.length; index += 1) {
           const file = imageFiles[index]
           const nodeId = `imageUpload-${Date.now()}-${index}`
-          const uploadResult = await uploadToR2(file, workflowId, nodeId, file.name)
-
-          if (!uploadResult.success || !uploadResult.url) {
-            toast.error(`Failed to upload "${file.name}"`)
-            continue
-          }
-
-          uploadedUrls.push(uploadResult.url)
+          const localPreviewUrl = URL.createObjectURL(file)
 
           const newNode = {
             id: nodeId,
@@ -870,20 +865,44 @@ function WorkflowEditorInner() {
             },
             data: normalizeNodeHandleData('imageUpload', {
               label: 'Image Upload',
-              imageUrl: uploadResult.url,
-              assetPath: uploadResult.url,
+              imageUrl: localPreviewUrl,
+              assetPath: '',
               fileName: file.name,
+              isUploading: true,
+              uploadError: '',
+              localPreviewUrl,
               ...getNodeHandles('imageUpload', {}),
               onUpdateNodeData: updateNodeData,
             }),
           } satisfies Node<WorkflowNodeData>
 
           setNodes((nds) => [...nds, newNode])
+
+          void (async () => {
+            const uploadResult = await uploadToR2(file, workflowId, nodeId, file.name)
+
+            if (!uploadResult.success || !uploadResult.url) {
+              updateNodeData(nodeId, {
+                isUploading: false,
+                uploadError: uploadResult.error || 'Upload failed',
+              })
+              toast.error(`Failed to upload "${file.name}"`)
+              return
+            }
+
+            updateNodeData(nodeId, {
+              imageUrl: uploadResult.url,
+              assetPath: uploadResult.url,
+              fileName: file.name,
+              isUploading: false,
+              uploadError: '',
+              localPreviewUrl: '',
+            })
+            URL.revokeObjectURL(localPreviewUrl)
+          })()
         }
 
-        if (uploadedUrls.length > 0) {
-          toast.success(uploadedUrls.length === 1 ? 'Image added to canvas' : `${uploadedUrls.length} images added to canvas`)
-        }
+        toast.success(imageFiles.length === 1 ? 'Image added to canvas' : `${imageFiles.length} images added to canvas`)
 
         return
       }
