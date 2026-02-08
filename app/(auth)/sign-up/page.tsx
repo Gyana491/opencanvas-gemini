@@ -59,12 +59,12 @@ export default function SignUpPage() {
         callbackURL: "/dashboard",
       }, {
         onSuccess: () => {
-             toast.success("Account created successfully")
-             router.push("/dashboard")
+          toast.success("Account created successfully")
+          router.push("/dashboard")
         },
         onError: (ctx) => {
-             toast.error(ctx.error.message)
-             setIsLoading(false)
+          toast.error(ctx.error.message)
+          setIsLoading(false)
         }
       })
     } catch (error) {
@@ -88,13 +88,13 @@ export default function SignUpPage() {
 
   return (
     <Card className="w-full">
-      <CardHeader>
-        <CardTitle className="text-2xl font-bold">Sign Up</CardTitle>
-        <CardDescription>
-          Create an account to get started with OpenCanvas
+      <CardHeader className="space-y-1">
+        <CardDescription className="text-center">
+          Only for invited users. Create an account to get started with OpenCanvas.
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {/* Hidden Google sign-up option - uncomment to re-enable
         <div className="space-y-4">
           <Button
             type="button"
@@ -143,6 +143,7 @@ export default function SignUpPage() {
             </div>
           </div>
         </div>
+        */}
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField

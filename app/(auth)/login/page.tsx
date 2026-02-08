@@ -69,12 +69,12 @@ function LoginContent() {
         callbackURL: redirectTo,
       }, {
         onSuccess: () => {
-             toast.success("Signed in successfully")
-            router.push(redirectTo)
+          toast.success("Signed in successfully")
+          router.push(redirectTo)
         },
         onError: (ctx) => {
-             toast.error(ctx.error.message)
-             setIsLoading(false)
+          toast.error(ctx.error.message)
+          setIsLoading(false)
         }
       })
     } catch (error) {
@@ -98,13 +98,14 @@ function LoginContent() {
 
   return (
     <Card className="w-full">
-      <CardHeader>
-        <CardTitle className="text-2xl font-bold">Sign In</CardTitle>
-        <CardDescription>
-          Enter your email below to login to your account
+      <CardHeader className="space-y-1">
+        <CardDescription className="text-center">
+          Only for invited users. <br/>
+          Enter your email and password to login.
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {/* Hidden authentication options - uncomment to re-enable
         <div className="space-y-4">
           <Button
             type="button"
@@ -176,6 +177,7 @@ function LoginContent() {
             </div>
           </div>
         </div>
+        */}
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
@@ -198,12 +200,14 @@ function LoginContent() {
                 <FormItem>
                   <div className="flex items-center justify-between">
                     <FormLabel>Password</FormLabel>
+                    {/* Hidden forgot password link - uncomment to re-enable
                     <Link
                       href="/forgot-password"
                       className="text-xs text-muted-foreground hover:text-neutral-900 dark:hover:text-neutral-50"
                     >
                       Forgot password?
                     </Link>
+                    */}
                   </div>
                   <FormControl>
                     <Input type="password" {...field} />
@@ -225,13 +229,24 @@ function LoginContent() {
           </form>
         </Form>
       </CardContent>
-      <CardFooter className="flex justify-center">
+      <CardFooter className="flex flex-col items-center gap-2">
+        <div className="text-center">
+          <a
+            href="mailto:hello@gyana.dev?subject=Request access for opencanvas for test&body=Hi I need to access for opecanvas for test.%0D%0AMy Name: <your-name>%0D%0AMy email id: <your-email-id>"
+            className="text-sm font-semibold text-neutral-900 hover:underline dark:text-neutral-50"
+          >
+            Request test Access
+          </a>
+          <p className="text-xs text-neutral-500">hello@gyana.dev</p>
+        </div>
+        {/* Hidden signup link - uncomment to re-enable
         <p className="text-sm text-neutral-500">
           Don&apos;t have an account?{" "}
           <Link href="/sign-up" className="font-semibold text-neutral-900 hover:underline dark:text-neutral-50">
             Sign up
           </Link>
         </p>
+        */}
       </CardFooter>
     </Card>
   )
