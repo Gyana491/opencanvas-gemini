@@ -40,5 +40,49 @@ export const TOOLS: Tool[] = [
                 type: 'image',
             },
         ],
+    },
+    {
+        id: 'blur',
+        name: 'Blur',
+        title: 'Blur',
+        description: 'Apply blur effect to images',
+        category: 'media',
+        inputs: [
+            {
+                id: OUTPUT_HANDLE_IDS.image,
+                label: 'Image',
+                type: 'image',
+                allowedSourceIds: [OUTPUT_HANDLE_IDS.image],
+            },
+        ],
+        outputs: [
+            {
+                id: OUTPUT_HANDLE_IDS.image,
+                label: 'Image',
+                type: 'image',
+            },
+        ],
+    },
+    {
+        id: 'colorGrading',
+        name: 'Color Grading',
+        title: 'Color Grading',
+        description: 'Adjust RGB levels with per-channel min, gamma, and max',
+        category: 'media',
+        inputs: [
+            {
+                id: OUTPUT_HANDLE_IDS.image,
+                label: 'Image',
+                type: 'image',
+                allowedSourceIds: [OUTPUT_HANDLE_IDS.image],
+            },
+        ],
+        outputs: [
+            {
+                id: OUTPUT_HANDLE_IDS.image,
+                label: 'Image',
+                type: 'image',
+            },
+        ],
     }
 ];

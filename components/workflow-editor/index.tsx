@@ -399,7 +399,37 @@ function WorkflowEditorInner() {
   }, [setNodes, setSelectedNode])
 
   // Propagate connected node data through edges
+  // Track both edge wiring and relevant node outputs to avoid missing fresh connections.
+  const graphSignatureRef = React.useRef<string>('')
+  const edgeSignature = React.useMemo(() => {
+    return JSON.stringify(
+      edges.map((e) => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        sourceHandle: e.sourceHandle,
+        targetHandle: e.targetHandle,
+      }))
+    )
+  }, [edges])
+  const nodeOutputs = React.useMemo(() => {
+    return JSON.stringify(nodes.map(n => ({
+      id: n.id,
+      output: n.data.output,
+      imageUrl: n.data.imageUrl,
+      text: n.data.text,
+      blurType: n.data.blurType,
+      blurSize: n.data.blurSize
+    })))
+  }, [nodes])
+  const graphSignature = React.useMemo(() => `${edgeSignature}::${nodeOutputs}`, [edgeSignature, nodeOutputs])
+
   React.useEffect(() => {
+    if (graphSignatureRef.current === graphSignature) {
+      return
+    }
+    graphSignatureRef.current = graphSignature
+
     setNodes((currentNodes) => {
       const updatedNodes = currentNodes.map((node) => {
         const incomingEdges = edges.filter((edge) => edge.target === node.id)
@@ -419,8 +449,8 @@ function WorkflowEditorInner() {
             } else if (sourceNode.data.output) {
               connectedData.connectedPrompt = sourceNode.data.output
             }
-          } else if (targetHandle === 'image' || targetHandle?.startsWith('image_') || targetHandle?.startsWith('ref_image_')) {
-            const dataKey = targetHandle === 'image'
+          } else if (targetHandle === 'image' || targetHandle === 'imageOutput' || targetHandle?.startsWith('image_') || targetHandle?.startsWith('ref_image_')) {
+            const dataKey = (targetHandle === 'image' || targetHandle === 'imageOutput')
               ? 'connectedImage'
               : targetHandle?.startsWith('ref_image_')
                 ? `connectedRefImage_${targetHandle.split('_')[2]}`
@@ -431,8 +461,15 @@ function WorkflowEditorInner() {
             } else if (sourceNode.type === 'gemini-2.5-flash-image' || sourceNode.type === 'gemini-3-pro-image-preview' || sourceNode.type === 'imagen-4.0-generate-001') {
               // Get output from model nodes
               connectedData[dataKey] = sourceNode.data.output
+            } else if (sourceNode.type === 'blur' || sourceNode.type === 'colorGrading') {
+              connectedData[dataKey] =
+                sourceNode.data.output ||
+                (typeof sourceNode.data.getOutput === 'function' ? sourceNode.data.getOutput() : null)
             } else if (sourceNode.data.imageOutput) {
               connectedData[dataKey] = sourceNode.data.imageOutput
+            } else if (sourceNode.data.output) {
+              // Fallback for any node with output field
+              connectedData[dataKey] = sourceNode.data.output
             }
           } else if (targetHandle === 'video') {
             connectedData.connectedVideo =
@@ -442,6 +479,28 @@ function WorkflowEditorInner() {
               ''
           }
         })
+
+        // Check if node has connected data that should be cleared
+        // (no incoming edges for an image target handle means we should clear connectedImage)
+        const hasImageEdge = incomingEdges.some((edge) =>
+          edge.targetHandle === 'image' || edge.targetHandle === 'imageOutput'
+        )
+
+        // If node type expects image input but has no image edge, clear it
+        if ((node.type === 'blur' || node.type === 'colorGrading') && !hasImageEdge) {
+          if (node.data.connectedImage) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                connectedImage: '',
+                output: null,
+                imageOutput: null,
+                getOutput: null,
+              },
+            }
+          }
+        }
 
         // Only update if there are connected data changes
         if (incomingEdges.length > 0) {
@@ -476,7 +535,7 @@ function WorkflowEditorInner() {
 
       return updatedNodes
     })
-  }, [edges, updateNodeData, setNodes])
+  }, [edges, graphSignature, updateNodeData, setNodes])
 
   const isValidConnection: IsValidConnection<Edge> = useCallback(
     (edgeOrConnection) => {
@@ -589,6 +648,18 @@ function WorkflowEditorInner() {
             aspectRatio: '16:9',
             imageInputCount: 0,
           }),
+          ...(nodeType === 'colorGrading' && {
+            rInMin: 0,
+            rGamma: 1,
+            rInMax: 255,
+            gInMin: 0,
+            gGamma: 1,
+            gInMax: 255,
+            bInMin: 0,
+            bGamma: 1,
+            bInMax: 255,
+            linkChannels: true,
+          }),
           ...getNodeHandles(nodeType, {}),
           onUpdateNodeData: updateNodeData,
         },
@@ -649,6 +720,18 @@ function WorkflowEditorInner() {
           durationSeconds: '8',
           aspectRatio: '16:9',
           imageInputCount: 0,
+        }),
+        ...(nodeType === 'colorGrading' && {
+          rInMin: 0,
+          rGamma: 1,
+          rInMax: 255,
+          gInMin: 0,
+          gGamma: 1,
+          gInMax: 255,
+          bInMin: 0,
+          bGamma: 1,
+          bInMax: 255,
+          linkChannels: true,
         }),
         ...getNodeHandles(nodeType),
         onUpdateNodeData: updateNodeData,
