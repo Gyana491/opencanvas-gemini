@@ -20,9 +20,10 @@ import {
   type Node,
   type IsValidConnection,
   MarkerType,
+  SelectionMode,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Activity, Download, Loader2, Share2, Undo2, Redo2 } from 'lucide-react'
+import { Activity, Download, Hand, Loader2, MousePointer2, Redo2, Share2, Undo2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { toPng } from 'html-to-image'
 
@@ -104,6 +105,11 @@ const EDGE_STROKE_WIDTH = 2.5
 const EDGE_MARKER_SIZE = 16
 const EDGE_INTERACTION_WIDTH = 28
 const MAX_VIDEO_FILE_SIZE_BYTES = 200 * 1024 * 1024
+const GROUP_NODE_TYPE = 'workflowGroup'
+const GROUP_PADDING_X = 48
+const GROUP_PADDING_Y = 48
+const MIN_GROUP_WIDTH = 380
+const MIN_GROUP_HEIGHT = 260
 
 function canonicalizeNodeType(nodeType: string | undefined): string | undefined {
   if (nodeType === 'imageEditor') {
@@ -390,6 +396,48 @@ function formatUnknownError(error: unknown): string {
   return ''
 }
 
+function getNodeDimension(node: Node<WorkflowNodeData>, axis: 'width' | 'height'): number {
+  const measured = (node as Node<WorkflowNodeData> & { measured?: { width?: number; height?: number } }).measured
+  if (axis === 'width') {
+    return Math.max(
+      1,
+      Math.round(
+        (typeof node.width === 'number' ? node.width : undefined) ??
+        (typeof measured?.width === 'number' ? measured.width : undefined) ??
+        320
+      )
+    )
+  }
+
+  return Math.max(
+    1,
+    Math.round(
+      (typeof node.height === 'number' ? node.height : undefined) ??
+      (typeof measured?.height === 'number' ? measured.height : undefined) ??
+      180
+    )
+  )
+}
+
+function getAbsoluteNodePosition(
+  node: Node<WorkflowNodeData>,
+  nodeMap: Map<string, Node<WorkflowNodeData>>
+): { x: number; y: number } {
+  let x = node.position.x
+  let y = node.position.y
+  let parentId = node.parentId
+
+  while (parentId) {
+    const parent = nodeMap.get(parentId)
+    if (!parent) break
+    x += parent.position.x
+    y += parent.position.y
+    parentId = parent.parentId
+  }
+
+  return { x, y }
+}
+
 function WorkflowEditorInner() {
   const params = useParams()
   const router = useRouter()
@@ -403,6 +451,7 @@ function WorkflowEditorInner() {
   const [connectingSourceHandle, setConnectingSourceHandle] = useState<string | null>(null)
   const [reconnectingEdgeId, setReconnectingEdgeId] = useState<string | null>(null)
   const [isAnimated, setIsAnimated] = useState(true)
+  const [interactionMode, setInteractionMode] = useState<'select' | 'pan'>('select')
   const { screenToFlowPosition, setViewport, getViewport, getNodes, getEdges } = useReactFlow()
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false)
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false)
@@ -1536,6 +1585,174 @@ function WorkflowEditorInner() {
     setIsRightSidebarOpen(false)
   }, [])
 
+  const selectedGroupableNodes = React.useMemo(
+    () => nodes.filter((node) => node.selected && node.type !== GROUP_NODE_TYPE),
+    [nodes]
+  )
+  const selectedNodes = React.useMemo(
+    () => nodes.filter((node) => node.selected),
+    [nodes]
+  )
+
+  const handleGroupSelectedNodes = useCallback(() => {
+    if (selectedGroupableNodes.length < 2) {
+      toast.error('Select at least two nodes to create a group')
+      return
+    }
+
+    const baseNodeMap = new Map(nodes.map((node) => [node.id, node]))
+    const selectedIds = new Set(selectedGroupableNodes.map((node) => node.id))
+    const rootNodes = selectedGroupableNodes.filter((node) => {
+      let parentId = node.parentId
+      while (parentId) {
+        if (selectedIds.has(parentId)) {
+          return false
+        }
+        const parent = baseNodeMap.get(parentId)
+        if (!parent) break
+        parentId = parent.parentId
+      }
+      return true
+    })
+
+    if (rootNodes.length < 2) {
+      toast.error('Select at least two top-level nodes to create a group')
+      return
+    }
+
+    const absoluteBounds = rootNodes.map((node) => {
+      const absolute = getAbsoluteNodePosition(node, baseNodeMap)
+      return {
+        node,
+        x: absolute.x,
+        y: absolute.y,
+        width: getNodeDimension(node, 'width'),
+        height: getNodeDimension(node, 'height'),
+      }
+    })
+
+    const minX = Math.min(...absoluteBounds.map((bounds) => bounds.x))
+    const minY = Math.min(...absoluteBounds.map((bounds) => bounds.y))
+    const maxX = Math.max(...absoluteBounds.map((bounds) => bounds.x + bounds.width))
+    const maxY = Math.max(...absoluteBounds.map((bounds) => bounds.y + bounds.height))
+
+    const groupX = Math.round(minX - GROUP_PADDING_X)
+    const groupY = Math.round(minY - GROUP_PADDING_Y)
+    const groupWidth = Math.round(Math.max(MIN_GROUP_WIDTH, maxX - minX + GROUP_PADDING_X * 2))
+    const groupHeight = Math.round(Math.max(MIN_GROUP_HEIGHT, maxY - minY + GROUP_PADDING_Y * 2))
+    const groupId = `${GROUP_NODE_TYPE}-${Date.now()}`
+
+    const groupNode: Node<WorkflowNodeData> = {
+      id: groupId,
+      type: GROUP_NODE_TYPE,
+      position: { x: groupX, y: groupY },
+      data: normalizeNodeHandleData(GROUP_NODE_TYPE, {
+        label: 'Group',
+        title: 'Group',
+      }),
+      style: {
+        width: groupWidth,
+        height: groupHeight,
+      },
+      selected: true,
+    }
+
+    const groupedNodeIds = new Set(rootNodes.map((node) => node.id))
+    takeSnapshot(nodes, edges)
+    setNodes((currentNodes) => {
+      const currentMap = new Map(currentNodes.map((node) => [node.id, node]))
+      const reassigned = currentNodes.map((node) => {
+        if (!groupedNodeIds.has(node.id)) {
+          return {
+            ...node,
+            selected: false,
+          }
+        }
+
+        const absolute = getAbsoluteNodePosition(node, currentMap)
+        return {
+          ...node,
+          parentId: groupId,
+          extent: 'parent' as const,
+          position: {
+            x: Math.round(absolute.x - groupX),
+            y: Math.round(absolute.y - groupY),
+          },
+          selected: false,
+        }
+      })
+
+      const groupedChildren = reassigned.filter((node) => groupedNodeIds.has(node.id))
+      const otherNodes = reassigned.filter((node) => !groupedNodeIds.has(node.id))
+      return [...otherNodes, groupNode, ...groupedChildren]
+    })
+
+    setSelectedNode(groupNode)
+    setIsRightSidebarOpen(false)
+    toast.success('Grouped selected nodes')
+  }, [edges, nodes, selectedGroupableNodes, setNodes, takeSnapshot])
+
+  const handleDeleteSelection = useCallback(() => {
+    if (selectedNodes.length === 0) {
+      return
+    }
+    takeSnapshot(nodes, edges)
+    const selectedIds = new Set(selectedNodes.map((node) => node.id))
+    setNodes((currentNodes) => currentNodes.filter((node) => !selectedIds.has(node.id)))
+    setSelectedNode(null)
+    setIsRightSidebarOpen(false)
+    toast.success('Deleted selected nodes')
+  }, [edges, nodes, selectedNodes, setNodes, takeSnapshot])
+
+  const handleDuplicateSelection = useCallback(() => {
+    if (selectedNodes.length === 0) {
+      return
+    }
+
+    const selectedIds = new Set(selectedNodes.map((node) => node.id))
+    const idMap = new Map<string, string>()
+    selectedNodes.forEach((node, index) => {
+      idMap.set(node.id, `${node.type}-${Date.now()}-${index}`)
+    })
+
+    const duplicatedNodes = selectedNodes.map((node) => {
+      const mappedParentId = node.parentId && selectedIds.has(node.parentId)
+        ? idMap.get(node.parentId)
+        : node.parentId
+
+      return {
+        ...node,
+        id: idMap.get(node.id) || `${node.type}-${Date.now()}`,
+        position: {
+          x: node.position.x + 40,
+          y: node.position.y + 40,
+        },
+        parentId: mappedParentId,
+        selected: true,
+      }
+    })
+
+    const duplicatedEdges = edges
+      .filter((edge) => selectedIds.has(edge.source) && selectedIds.has(edge.target))
+      .map((edge, index) => ({
+        ...edge,
+        id: `${edge.id}-copy-${Date.now()}-${index}`,
+        source: idMap.get(edge.source) || edge.source,
+        target: idMap.get(edge.target) || edge.target,
+        selected: false,
+      }))
+
+    takeSnapshot(nodes, edges)
+    setNodes((currentNodes) => [
+      ...currentNodes.map((node) => ({ ...node, selected: false })),
+      ...duplicatedNodes,
+    ])
+    if (duplicatedEdges.length > 0) {
+      setEdges((currentEdges) => [...currentEdges, ...duplicatedEdges])
+    }
+    toast.success('Duplicated selected nodes')
+  }, [edges, nodes, selectedNodes, setEdges, setNodes, takeSnapshot])
+
   const addNode = useCallback((nodeType: string) => {
     const model = MODELS.find(m => m.id === nodeType) || TOOLS.find(t => t.id === nodeType);
     const newNode = {
@@ -1879,11 +2096,20 @@ function WorkflowEditorInner() {
         e.preventDefault()
         handlePaste()
       }
+
+      // Group selection: Cmd+G / Ctrl+G
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'g') {
+        e.preventDefault()
+        if (interactionMode !== 'select') {
+          setInteractionMode('select')
+        }
+        handleGroupSelectedNodes()
+      }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [nodes, handlePaste])
+  }, [handleGroupSelectedNodes, handlePaste, interactionMode, nodes])
 
   return (
     <div className="relative flex h-screen w-full bg-background">
@@ -1964,7 +2190,13 @@ function WorkflowEditorInner() {
         )}
 
         <div className="w-full h-full" ref={reactFlowWrapper}>
-          <PaneContextMenu onPaste={handlePaste}>
+          <PaneContextMenu
+            onPaste={handlePaste}
+            selectedNodeCount={selectedNodes.length}
+            onGroupSelection={handleGroupSelectedNodes}
+            onDuplicateSelection={handleDuplicateSelection}
+            onDeleteSelection={handleDeleteSelection}
+          >
             <ReactFlow
               nodes={nodes}
               edges={edges}
@@ -1994,6 +2226,11 @@ function WorkflowEditorInner() {
               onDragOver={onDragOver}
               nodeTypes={workflowNodeTypes}
               edgesReconnectable
+              selectionOnDrag={interactionMode === 'select'}
+              selectionMode={SelectionMode.Partial}
+              panOnDrag={interactionMode === 'pan'}
+              nodesDraggable={interactionMode === 'select'}
+              elementsSelectable={interactionMode === 'select'}
               connectionLineStyle={{
                 stroke: getEdgeColorFromSourceHandle(connectingSourceHandle),
               }}
@@ -2009,32 +2246,51 @@ function WorkflowEditorInner() {
               <Background />
               <Controls position="bottom-center">
                 <ControlButton
+                  onClick={() => setInteractionMode('select')}
+                  title="Select mode"
+                  aria-label="Select mode"
+                  className={interactionMode === 'select' ? "!bg-accent !border-border !text-accent-foreground" : ""}
+                >
+                  <MousePointer2 className={`h-4 w-4 ${interactionMode === 'select' ? 'text-foreground' : 'text-muted-foreground'}`} />
+                </ControlButton>
+                <ControlButton
+                  onClick={() => setInteractionMode('pan')}
+                  title="Pan mode"
+                  aria-label="Pan mode"
+                  className={interactionMode === 'pan' ? "!bg-accent !border-border !text-accent-foreground" : ""}
+                >
+                  <Hand className={`h-4 w-4 ${interactionMode === 'pan' ? 'text-foreground' : 'text-muted-foreground'}`} />
+                </ControlButton>
+                <ControlButton
                   onClick={handleUndo}
                   disabled={!canUndo}
                   title="Undo (Cmd+Z)"
+                  aria-label="Undo (Cmd+Z)"
                   className={!canUndo ? "opacity-50 cursor-not-allowed" : ""}
                 >
                   <Undo2
-                    className={`h-4 w-4 ${!canUndo ? 'text-gray-300' : 'text-gray-500'}`}
+                    className={`h-4 w-4 ${!canUndo ? 'text-muted-foreground/50' : 'text-muted-foreground'}`}
                   />
                 </ControlButton>
                 <ControlButton
                   onClick={handleRedo}
                   disabled={!canRedo}
                   title="Redo (Cmd+Shift+Z)"
+                  aria-label="Redo (Cmd+Shift+Z)"
                   className={!canRedo ? "opacity-50 cursor-not-allowed" : ""}
                 >
                   <Redo2
-                    className={`h-4 w-4 ${!canRedo ? 'text-gray-300' : 'text-gray-500'}`}
+                    className={`h-4 w-4 ${!canRedo ? 'text-muted-foreground/50' : 'text-muted-foreground'}`}
                   />
                 </ControlButton>
                 <ControlButton
                   onClick={toggleAnimation}
                   title={isAnimated ? "Disable Animated Edges" : "Enable Animated Edges"}
+                  aria-label={isAnimated ? "Disable animated edges" : "Enable animated edges"}
                   className={isAnimated ? "!bg-blue-500 !border-blue-500 hover:!bg-blue-600" : ""}
                 >
                   <Activity
-                    className={`h-4 w-4 ${isAnimated ? 'text-white' : 'text-gray-500'}`}
+                    className={`h-4 w-4 ${isAnimated ? 'text-white' : 'text-muted-foreground'}`}
                   />
                 </ControlButton>
               </Controls>

@@ -2,21 +2,34 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { useReactFlow } from "@xyflow/react"
-import { ClipboardPaste } from "lucide-react"
+import { ClipboardPaste, Copy, FolderPlus, Trash2 } from "lucide-react"
 
 import {
     ContextMenu,
     ContextMenuContent,
     ContextMenuItem,
+    ContextMenuSeparator,
+    ContextMenuShortcut,
     ContextMenuTrigger,
 } from "@/components/ui/context-menu"
 
 interface PaneContextMenuProps {
     children: React.ReactNode
     onPaste?: (position: { x: number; y: number }) => void
+    selectedNodeCount?: number
+    onGroupSelection?: () => void
+    onDuplicateSelection?: () => void
+    onDeleteSelection?: () => void
 }
 
-export function PaneContextMenu({ children, onPaste }: PaneContextMenuProps) {
+export function PaneContextMenu({
+    children,
+    onPaste,
+    selectedNodeCount = 0,
+    onGroupSelection,
+    onDuplicateSelection,
+    onDeleteSelection,
+}: PaneContextMenuProps) {
     const [canPaste, setCanPaste] = useState(false)
     const [menuPosition, setMenuPosition] = useState<{ x: number, y: number } | null>(null)
 
@@ -47,11 +60,15 @@ export function PaneContextMenu({ children, onPaste }: PaneContextMenuProps) {
     }, [])
 
     useEffect(() => {
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        checkClipboard()
+        const timer = window.setTimeout(() => {
+            void checkClipboard()
+        }, 0)
         const handleFocus = () => { void checkClipboard() }
         window.addEventListener('focus', handleFocus)
-        return () => window.removeEventListener('focus', handleFocus)
+        return () => {
+            window.clearTimeout(timer)
+            window.removeEventListener('focus', handleFocus)
+        }
     }, [checkClipboard])
 
     const handleContextMenu = (e: React.MouseEvent) => {
@@ -80,6 +97,31 @@ export function PaneContextMenu({ children, onPaste }: PaneContextMenuProps) {
                     <ClipboardPaste className="h-4 w-4" />
                     Paste
                 </ContextMenuItem>
+                {selectedNodeCount > 0 && (
+                    <>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem
+                            onSelect={onGroupSelection}
+                            disabled={selectedNodeCount < 2}
+                            className="gap-2"
+                        >
+                            <FolderPlus className="h-4 w-4" />
+                            Group selection
+                            <ContextMenuShortcut>⌘G</ContextMenuShortcut>
+                        </ContextMenuItem>
+                        <ContextMenuItem onSelect={onDuplicateSelection} className="gap-2">
+                            <Copy className="h-4 w-4" />
+                            Duplicate
+                        </ContextMenuItem>
+                        <ContextMenuItem
+                            onSelect={onDeleteSelection}
+                            className="text-destructive focus:text-destructive gap-2"
+                        >
+                            <Trash2 className="h-4 w-4" />
+                            Delete
+                        </ContextMenuItem>
+                    </>
+                )}
             </ContextMenuContent>
         </ContextMenu>
     )

@@ -12,6 +12,7 @@ import { ColorGradingNode } from "./nodes/tools/color-grading-node"
 import { CropNode } from "./nodes/tools/crop-node"
 import { PainterNode } from "./nodes/tools/painter-node"
 import { StickyNoteNode } from "./nodes/sticky-note-node"
+import { WorkflowGroupNode } from "./nodes/workflow-group-node"
 import { ImageDescriberNode } from "./nodes/tools/image-describer-node"
 import { PromptEnhancerNode } from "./nodes/tools/prompt-enhancer-node"
 import { PromptConcatenatorNode } from "./nodes/tools/prompt-concatenator-node"
@@ -32,6 +33,7 @@ export const workflowNodeTypes = {
   crop: CropNode,
   painter: PainterNode,
   stickyNote: StickyNoteNode,
+  workflowGroup: WorkflowGroupNode,
   imageDescriber: ImageDescriberNode,
   promptEnhancer: PromptEnhancerNode,
   promptConcatenator: PromptConcatenatorNode,

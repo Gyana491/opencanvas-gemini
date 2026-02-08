@@ -128,33 +128,51 @@
 .react-flow__controls {
   display: flex !important;
   flex-direction: row !important;
+  align-items: center !important;
   gap: 0.25rem !important;
-  background: rgba(0, 0, 0, 0.9) !important;
-  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1) !important;
-  border-radius: 0.5rem !important;
-  padding: 0.375rem !important;
-  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  background: var(--card) !important;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.1) !important;
+  border-radius: calc(var(--radius) + 2px) !important;
+  padding: 0.25rem !important;
+  border: 1px solid var(--border) !important;
 }
 
 .react-flow__controls button {
-  width: 2rem !important;
-  height: 2rem !important;
+  width: 2.25rem !important;
+  height: 2.25rem !important;
   background: transparent !important;
-  border: none !important;
-  color: #ffffff !important;
-  border-radius: 0.375rem !important;
+  border: 1px solid transparent !important;
+  color: var(--muted-foreground) !important;
+  border-radius: calc(var(--radius) - 2px) !important;
   opacity: 1 !important;
+  transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease !important;
 }
 
 .react-flow__controls button:hover {
-  background: rgba(255, 255, 255, 0.12) !important;
+  background: var(--accent) !important;
+  color: var(--accent-foreground) !important;
+}
+
+.react-flow__controls button:disabled {
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+}
+
+.react-flow__controls button:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 2px var(--ring) !important;
 }
 
 .react-flow__controls button svg {
-  fill: currentColor !important;
-  color: #ffffff !important;
+  width: 1.15rem !important;
+  height: 1.15rem !important;
+  color: currentColor !important;
+  fill: none !important;
+  stroke: currentColor !important;
+  stroke-width: 2.25 !important;
 }
 
 .react-flow__controls button path {
-  fill: currentColor !important;
+  fill: none !important;
+  stroke: currentColor !important;
 }

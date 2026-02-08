@@ -1,8 +1,8 @@
 "use client"
 
-import { useCallback } from "react"
-import { useReactFlow, Node } from "@xyflow/react"
-import { Copy, Trash2, Files, Download } from "lucide-react"
+import { useCallback, useMemo } from "react"
+import { useReactFlow, type Node } from "@xyflow/react"
+import { Check, Copy, FolderPlus, Trash2, Files, Download } from "lucide-react"
 import { toast } from "sonner"
 import { downloadMedia } from "@/lib/utils/download"
 
@@ -10,7 +10,11 @@ import {
     ContextMenu,
     ContextMenuContent,
     ContextMenuItem,
+    ContextMenuShortcut,
     ContextMenuSeparator,
+    ContextMenuSub,
+    ContextMenuSubContent,
+    ContextMenuSubTrigger,
     ContextMenuTrigger,
 } from "@/components/ui/context-menu"
 import {
@@ -29,6 +33,65 @@ interface NodeContextMenuProps {
     asChild?: boolean
 }
 
+const GROUP_NODE_TYPE = 'workflowGroup'
+const GROUP_PADDING_X = 48
+const GROUP_PADDING_Y = 48
+const MIN_GROUP_WIDTH = 380
+const MIN_GROUP_HEIGHT = 260
+
+type GroupLabelSize = 'small' | 'medium' | 'large'
+
+type FlowNodeLike = {
+    id: string
+    type?: string
+    position: { x: number; y: number }
+    parentId?: string
+    width?: number
+    height?: number
+    measured?: { width?: number; height?: number }
+    data?: Record<string, unknown>
+    selected?: boolean
+}
+
+function getNodeDimension(node: FlowNodeLike, axis: 'width' | 'height'): number {
+    const measured = node?.measured
+    if (axis === 'width') {
+        return Math.max(
+            1,
+            Math.round(
+                (typeof node?.width === 'number' ? node.width : undefined) ??
+                (typeof measured?.width === 'number' ? measured.width : undefined) ??
+                320
+            )
+        )
+    }
+
+    return Math.max(
+        1,
+        Math.round(
+            (typeof node?.height === 'number' ? node.height : undefined) ??
+            (typeof measured?.height === 'number' ? measured.height : undefined) ??
+            180
+        )
+    )
+}
+
+function getAbsoluteNodePosition(node: FlowNodeLike, nodeMap: Map<string, FlowNodeLike>): { x: number; y: number } {
+    let x = node.position.x
+    let y = node.position.y
+    let parentId = node.parentId
+
+    while (parentId) {
+        const parent = nodeMap.get(parentId)
+        if (!parent) break
+        x += parent.position.x
+        y += parent.position.y
+        parentId = parent.parentId
+    }
+
+    return { x, y }
+}
+
 export function NodeContextMenu({
     children,
     nodeId,
@@ -36,13 +99,147 @@ export function NodeContextMenu({
     asChild = false,
 }: NodeContextMenuProps) {
     const { getNode, setNodes, addNodes, getNodes } = useReactFlow()
+    const allNodes = getNodes() as FlowNodeLike[]
+    const selectedNodes = allNodes.filter((n) => n.selected)
+    const selectedIds = useMemo(() => new Set(selectedNodes.map((n) => n.id)), [selectedNodes])
+    const selectedGroupableNodes = selectedNodes.filter((n) => n.type !== GROUP_NODE_TYPE)
+    const node = getNode(nodeId)
+    const isGroupNode = node?.type === GROUP_NODE_TYPE
+    const groupLabelSize: GroupLabelSize =
+        node?.data?.labelSize === 'small' || node?.data?.labelSize === 'large' ? node.data.labelSize : 'medium'
+
+    const handleGroupSelection = useCallback(() => {
+        if (selectedGroupableNodes.length < 2) {
+            toast.error("Select at least two nodes to create a group")
+            return
+        }
+
+        const nodeMap = new Map(allNodes.map((currentNode) => [currentNode.id, currentNode]))
+        const rootNodes = selectedGroupableNodes.filter((currentNode) => {
+            let parentId = currentNode.parentId
+            while (parentId) {
+                if (selectedIds.has(parentId)) {
+                    return false
+                }
+                const parent = nodeMap.get(parentId)
+                if (!parent) break
+                parentId = parent.parentId
+            }
+            return true
+        })
+
+        if (rootNodes.length < 2) {
+            toast.error("Select at least two top-level nodes to create a group")
+            return
+        }
+
+        const bounds = rootNodes.map((currentNode) => {
+            const absolute = getAbsoluteNodePosition(currentNode, nodeMap)
+            return {
+                node: currentNode,
+                x: absolute.x,
+                y: absolute.y,
+                width: getNodeDimension(currentNode, 'width'),
+                height: getNodeDimension(currentNode, 'height'),
+            }
+        })
+        const minX = Math.min(...bounds.map((bound) => bound.x))
+        const minY = Math.min(...bounds.map((bound) => bound.y))
+        const maxX = Math.max(...bounds.map((bound) => bound.x + bound.width))
+        const maxY = Math.max(...bounds.map((bound) => bound.y + bound.height))
+        const groupX = Math.round(minX - GROUP_PADDING_X)
+        const groupY = Math.round(minY - GROUP_PADDING_Y)
+        const groupWidth = Math.round(Math.max(MIN_GROUP_WIDTH, maxX - minX + GROUP_PADDING_X * 2))
+        const groupHeight = Math.round(Math.max(MIN_GROUP_HEIGHT, maxY - minY + GROUP_PADDING_Y * 2))
+        const groupId = `${GROUP_NODE_TYPE}-${Date.now()}`
+        const groupedRootIds = new Set(rootNodes.map((currentNode) => currentNode.id))
+
+        setNodes((currentNodes) => {
+            const currentMap = new Map(currentNodes.map((currentNode) => [currentNode.id, currentNode]))
+            const reassigned = currentNodes.map((currentNode) => {
+                if (!groupedRootIds.has(currentNode.id)) {
+                    return {
+                        ...currentNode,
+                        selected: false,
+                    }
+                }
+                const absolute = getAbsoluteNodePosition(currentNode, currentMap)
+                return {
+                    ...currentNode,
+                    parentId: groupId,
+                    extent: 'parent' as const,
+                    position: {
+                        x: Math.round(absolute.x - groupX),
+                        y: Math.round(absolute.y - groupY),
+                    },
+                    selected: false,
+                }
+            })
+
+            const groupNode = {
+                id: groupId,
+                type: GROUP_NODE_TYPE,
+                position: { x: groupX, y: groupY },
+                data: {
+                    label: 'Group',
+                    title: 'Group',
+                    labelSize: 'medium',
+                },
+                style: {
+                    width: groupWidth,
+                    height: groupHeight,
+                },
+                selected: true,
+            }
+
+            const groupedChildren = reassigned.filter((currentNode) => groupedRootIds.has(currentNode.id))
+            const otherNodes = reassigned.filter((currentNode) => !groupedRootIds.has(currentNode.id))
+            return [...otherNodes, groupNode, ...groupedChildren]
+        })
+        toast.success("Grouped selected nodes")
+    }, [allNodes, selectedGroupableNodes, selectedIds, setNodes])
 
     const handleDelete = useCallback(() => {
+        if (selectedNodes.length > 1 && selectedIds.has(nodeId)) {
+            setNodes((nodes) => nodes.filter((n) => !selectedIds.has(n.id)))
+            toast.success("Deleted selected nodes")
+            return
+        }
         setNodes((nodes) => nodes.filter((n) => n.id !== nodeId))
         toast.success("Node deleted")
-    }, [nodeId, setNodes])
+    }, [nodeId, selectedIds, selectedNodes.length, setNodes])
 
     const handleDuplicate = useCallback(() => {
+        if (selectedNodes.length > 1 && selectedIds.has(nodeId)) {
+            const idMap = new Map<string, string>()
+            selectedNodes.forEach((selectedNode, index) => {
+                idMap.set(selectedNode.id, `${selectedNode.type}-${Date.now()}-${index}`)
+            })
+
+            const duplicatedNodes: Node<Record<string, unknown>>[] = selectedNodes.map((selectedNode) => {
+                const mappedParentId = selectedNode.parentId && selectedIds.has(selectedNode.parentId)
+                    ? idMap.get(selectedNode.parentId)
+                    : selectedNode.parentId
+
+                return {
+                    ...selectedNode,
+                    type: selectedNode.type || 'textInput',
+                    data: selectedNode.data ?? {},
+                    id: idMap.get(selectedNode.id) || `${selectedNode.type}-${Date.now()}`,
+                    position: {
+                        x: selectedNode.position.x + 40,
+                        y: selectedNode.position.y + 40,
+                    },
+                    parentId: mappedParentId,
+                    selected: true,
+                }
+            })
+
+            setNodes((nodes) => [...nodes.map((n) => ({ ...n, selected: false })), ...duplicatedNodes])
+            toast.success("Duplicated selected nodes")
+            return
+        }
+
         const node = getNode(nodeId)
         if (!node) return
 
@@ -64,7 +261,51 @@ export function NodeContextMenu({
 
         addNodes(newNode)
         toast.success("Node duplicated")
-    }, [nodeId, getNode, addNodes])
+    }, [nodeId, getNode, addNodes, selectedIds, selectedNodes, setNodes])
+
+    const handleUngroup = useCallback(() => {
+        const node = getNode(nodeId)
+        if (!node || node.type !== GROUP_NODE_TYPE) return
+
+        setNodes((nodes) => {
+            const group = nodes.find((n) => n.id === nodeId)
+            if (!group) return nodes
+
+            const groupPosition = group.position
+            return nodes
+                .filter((n) => n.id !== nodeId)
+                .map((n) => {
+                    if (n.parentId !== nodeId) return n
+                    return {
+                        ...n,
+                        parentId: undefined,
+                        extent: undefined,
+                        position: {
+                            x: Math.round(groupPosition.x + n.position.x),
+                            y: Math.round(groupPosition.y + n.position.y),
+                        },
+                    }
+                })
+        })
+
+        toast.success("Group removed")
+    }, [getNode, nodeId, setNodes])
+
+    const handleSetGroupLabelSize = useCallback((size: GroupLabelSize) => {
+        setNodes((nodes) =>
+            nodes.map((n) =>
+                n.id === nodeId
+                    ? {
+                        ...n,
+                        data: {
+                            ...n.data,
+                            labelSize: size,
+                        },
+                    }
+                    : n
+            )
+        )
+    }, [nodeId, setNodes])
 
     const handleCopy = useCallback(() => {
         const node = getNode(nodeId)
@@ -75,8 +316,7 @@ export function NodeContextMenu({
         try {
             navigator.clipboard.writeText(JSON.stringify(node, null, 2))
             toast.success("Node data copied to clipboard")
-        } catch (err) {
-            // console.error(err)
+        } catch {
             toast.error("Failed to copy node data")
         }
     }, [nodeId, getNode])
@@ -117,8 +357,6 @@ export function NodeContextMenu({
 
     }, [nodeId, getNode])
 
-    const node = getNode(nodeId)
-
     // Safe check for node and node.type
     const showDownload = node && node.type ? (
         (node.type.includes('image') || node.type.includes('video') || node.type === 'imagen-4.0-generate-001' || node.type === 'veo-3.1-generate-preview') &&
@@ -128,6 +366,16 @@ export function NodeContextMenu({
 
     const MenuItems = (
         <>
+            {selectedGroupableNodes.length >= 2 && (
+                <>
+                    <ContextMenuItem onSelect={handleGroupSelection} className="gap-2">
+                        <FolderPlus className="h-4 w-4" />
+                        Group selection
+                        <ContextMenuShortcut>⌘G</ContextMenuShortcut>
+                    </ContextMenuItem>
+                    <ContextMenuSeparator />
+                </>
+            )}
             <ContextMenuItem onSelect={handleCopy} className="gap-2">
                 <Copy className="h-4 w-4" />
                 Copy
@@ -136,6 +384,31 @@ export function NodeContextMenu({
                 <Files className="h-4 w-4" />
                 Duplicate
             </ContextMenuItem>
+            {isGroupNode && (
+                <>
+                    <ContextMenuSeparator />
+                    <ContextMenuSub>
+                        <ContextMenuSubTrigger>Label size</ContextMenuSubTrigger>
+                        <ContextMenuSubContent className="w-40">
+                            <ContextMenuItem onSelect={() => handleSetGroupLabelSize('small')} className="gap-2">
+                                Small
+                                {groupLabelSize === 'small' ? <Check className="ml-auto h-4 w-4" /> : null}
+                            </ContextMenuItem>
+                            <ContextMenuItem onSelect={() => handleSetGroupLabelSize('medium')} className="gap-2">
+                                Medium
+                                {groupLabelSize === 'medium' ? <Check className="ml-auto h-4 w-4" /> : null}
+                            </ContextMenuItem>
+                            <ContextMenuItem onSelect={() => handleSetGroupLabelSize('large')} className="gap-2">
+                                Large
+                                {groupLabelSize === 'large' ? <Check className="ml-auto h-4 w-4" /> : null}
+                            </ContextMenuItem>
+                        </ContextMenuSubContent>
+                    </ContextMenuSub>
+                    <ContextMenuItem onSelect={handleUngroup} className="gap-2">
+                        Ungroup
+                    </ContextMenuItem>
+                </>
+            )}
             {showDownload && (
                 <>
                     <ContextMenuSeparator />
@@ -158,6 +431,15 @@ export function NodeContextMenu({
 
     const DropdownItems = (
         <>
+            {selectedGroupableNodes.length >= 2 && (
+                <>
+                    <DropdownMenuItem onSelect={handleGroupSelection} className="gap-2">
+                        <FolderPlus className="h-4 w-4" />
+                        Group selection
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                </>
+            )}
             <DropdownMenuItem onSelect={handleCopy} className="gap-2">
                 <Copy className="h-4 w-4" />
                 Copy
@@ -166,6 +448,23 @@ export function NodeContextMenu({
                 <Files className="h-4 w-4" />
                 Duplicate
             </DropdownMenuItem>
+            {isGroupNode && (
+                <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onSelect={() => handleSetGroupLabelSize('small')}>
+                        Label size: Small {groupLabelSize === 'small' ? '✓' : ''}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => handleSetGroupLabelSize('medium')}>
+                        Label size: Medium {groupLabelSize === 'medium' ? '✓' : ''}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => handleSetGroupLabelSize('large')}>
+                        Label size: Large {groupLabelSize === 'large' ? '✓' : ''}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={handleUngroup}>
+                        Ungroup
+                    </DropdownMenuItem>
+                </>
+            )}
             {showDownload && (
                 <>
                     <DropdownMenuSeparator />
