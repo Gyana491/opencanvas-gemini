@@ -437,16 +437,6 @@ export const Veo31GeneratePreviewNode = memo(({ data, selected, id }: NodeProps)
                 }
             }
 
-            // Interpolation (first + last frame) is expected to be 8s.
-            if (
-                requestBody.imageUrl &&
-                requestBody.lastFrameUrl &&
-                requestBody.parameters?.durationSeconds &&
-                requestBody.parameters.durationSeconds !== '8'
-            ) {
-                requestBody.parameters.durationSeconds = '8';
-            }
-
             // Veo 3.1 requires 8s duration for 1080p/4k output.
             if (
                 requestBody.parameters.resolution &&

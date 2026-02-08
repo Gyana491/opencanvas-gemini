@@ -306,16 +306,6 @@ export async function POST(req: NextRequest) {
             config.personGeneration = hasImageBasedGeneration ? 'allow_adult' : 'allow_all';
         }
 
-        // Interpolation (first + last frame) is most reliable at 8s for Veo 3.1.
-        if (image && config.lastFrame && config.durationSeconds && config.durationSeconds !== 8) {
-            console.log('[Veo Route][Config Override]', {
-                reason: 'Interpolation detected, overriding durationSeconds to 8',
-                from: config.durationSeconds,
-                to: 8,
-            });
-            config.durationSeconds = 8;
-        }
-
         console.log('[Veo Route][Resolved Inputs]', {
             hasImage: Boolean(image),
             imageMimeType: image?.mimeType,
@@ -377,7 +367,7 @@ export async function POST(req: NextRequest) {
         const rawMessage = error?.message || 'Internal Server Error';
         const hint =
             statusCode === 400 && /use case is currently not supported/i.test(rawMessage)
-                ? ' Try durationSeconds=8 and image-based personGeneration=allow_adult.'
+                ? ' Try image-based personGeneration=allow_adult and verify this Veo 3.1 preview capability is enabled for your account/region.'
                 : '';
 
         return NextResponse.json(
