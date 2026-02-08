@@ -210,6 +210,12 @@ export default function DashboardPage() {
     w.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
+  const getThumbnailSrc = (workflow: Workflow) => {
+    if (!workflow.thumbnail) return ""
+    const separator = workflow.thumbnail.includes("?") ? "&" : "?"
+    return `${workflow.thumbnail}${separator}v=${encodeURIComponent(workflow.updatedAt)}`
+  }
+
   return (
     <div className="flex-1 flex flex-col h-full space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-2 md:mt-0">
@@ -286,7 +292,7 @@ export default function DashboardPage() {
                   <div className="aspect-video bg-muted overflow-hidden relative">
                     {workflow.thumbnail ? (
                       <img
-                        src={workflow.thumbnail}
+                        src={getThumbnailSrc(workflow)}
                         alt={workflow.name}
                         className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                       />
@@ -363,7 +369,7 @@ export default function DashboardPage() {
                       <div className="flex items-center gap-3">
                         <div className="h-10 w-16 overflow-hidden rounded bg-muted relative flex-shrink-0">
                           {workflow.thumbnail ? (
-                            <img src={workflow.thumbnail} alt={workflow.name} className="h-full w-full object-cover" />
+                            <img src={getThumbnailSrc(workflow)} alt={workflow.name} className="h-full w-full object-cover" />
                           ) : (
                             <div className="absolute inset-0 flex items-center justify-center bg-muted">
                               <FileText className="h-4 w-4 text-muted-foreground" />
