@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { useReactFlow } from "@xyflow/react"
-import { ClipboardPaste, Copy, FolderPlus, Trash2 } from "lucide-react"
+import { ClipboardPaste, Copy, Files, FolderPlus, Trash2 } from "lucide-react"
 
 import {
     ContextMenu,
@@ -18,6 +18,7 @@ interface PaneContextMenuProps {
     onPaste?: (position: { x: number; y: number }) => void
     selectedNodeCount?: number
     onGroupSelection?: () => void
+    onCopySelection?: () => void
     onDuplicateSelection?: () => void
     onDeleteSelection?: () => void
 }
@@ -27,6 +28,7 @@ export function PaneContextMenu({
     onPaste,
     selectedNodeCount = 0,
     onGroupSelection,
+    onCopySelection,
     onDuplicateSelection,
     onDeleteSelection,
 }: PaneContextMenuProps) {
@@ -109,9 +111,14 @@ export function PaneContextMenu({
                             Group selection
                             <ContextMenuShortcut>⌘G</ContextMenuShortcut>
                         </ContextMenuItem>
-                        <ContextMenuItem onSelect={onDuplicateSelection} className="gap-2">
+                        <ContextMenuItem onSelect={onCopySelection} className="gap-2">
                             <Copy className="h-4 w-4" />
-                            Duplicate
+                            Copy selection
+                            <ContextMenuShortcut>⌘C</ContextMenuShortcut>
+                        </ContextMenuItem>
+                        <ContextMenuItem onSelect={onDuplicateSelection} className="gap-2">
+                            <Files className="h-4 w-4" />
+                            Duplicate selection
                         </ContextMenuItem>
                         <ContextMenuItem
                             onSelect={onDeleteSelection}

@@ -1753,6 +1753,53 @@ function WorkflowEditorInner() {
     toast.success('Duplicated selected nodes')
   }, [edges, nodes, selectedNodes, setEdges, setNodes, takeSnapshot])
 
+  const handleCopySelection = useCallback(async () => {
+    if (selectedNodes.length === 0) {
+      return
+    }
+
+    // Helper to get group children
+    const getGroupDescendants = (groupId: string): typeof nodes => {
+      const children = nodes.filter(n => n.parentId === groupId)
+      const descendants = [...children]
+      children.forEach(child => {
+        if (child.type === 'workflowGroup') {
+          descendants.push(...getGroupDescendants(child.id))
+        }
+      })
+      return descendants
+    }
+
+    // Include children of any selected groups
+    let nodesToCopy = [...selectedNodes]
+    selectedNodes.forEach(n => {
+      if (n.type === 'workflowGroup') {
+        const descendants = getGroupDescendants(n.id)
+        descendants.forEach(d => {
+          if (!nodesToCopy.find(nd => nd.id === d.id)) {
+            nodesToCopy.push(d)
+          }
+        })
+      }
+    })
+
+    const copyNodeIds = new Set(nodesToCopy.map(n => n.id))
+
+    // Find edges connecting copied nodes
+    const edgesToCopy = edges.filter(e =>
+      copyNodeIds.has(e.source) && copyNodeIds.has(e.target)
+    )
+
+    try {
+      const clipboardData = { nodes: nodesToCopy, edges: edgesToCopy }
+      await navigator.clipboard.writeText(JSON.stringify(clipboardData, null, 2))
+      toast.success(nodesToCopy.length > 1 ? "Selection copied" : "Node copied")
+    } catch (err) {
+      console.error('Copy failed:', err)
+      toast.error("Failed to copy")
+    }
+  }, [edges, nodes, selectedNodes])
+
   const addNode = useCallback((nodeType: string) => {
     const model = MODELS.find(m => m.id === nodeType) || TOOLS.find(t => t.id === nodeType);
     const newNode = {
@@ -2013,47 +2060,103 @@ function WorkflowEditorInner() {
 
         const data = JSON.parse(text)
 
-        // Basic validation - check if it looks like a node
-        if (!data.id || !data.type) return
-
-        // Calculate position
-        let newPosition = position
-        if (!newPosition) {
+        // Calculate paste position offset
+        let pasteOffset = position
+        if (!pasteOffset) {
           // Paste at center of viewport if no position provided (keyboard shortcut)
           const viewport = getViewport()
-          // Center of the visible area
-          // Viewport: { x, y, zoom }
-          // We want center of screen, converted to flow pos
-          // ReactFlow container center?
           if (reactFlowWrapper.current) {
             const { width, height } = reactFlowWrapper.current.getBoundingClientRect()
-            newPosition = screenToFlowPosition({
-              x: width / 2 + (window.screenX || 0), // screenToFlow takes screen coords effectively if clientX/Y used
-              y: height / 2 + (window.screenY || 0)
-            })
-            // Actually screenToFlowPosition expects clientX/Y relative to viewport
-            // If we just want center of the *Flow*, we can use checks.
-            // But simpler:
-            // Center x = (-viewport.x + width/2) / zoom
-            // Center y = (-viewport.y + height/2) / zoom
-            newPosition = {
+            pasteOffset = {
               x: (-viewport.x + width / 2) / viewport.zoom,
               y: (-viewport.y + height / 2) / viewport.zoom
             }
           } else {
-            newPosition = { x: 0, y: 0 }
+            pasteOffset = { x: 0, y: 0 }
           }
         }
 
-        // Create new node with new ID
+        // Handle new format: { nodes: [...], edges: [...] }
+        if (data.nodes && Array.isArray(data.nodes)) {
+          const nodesToPaste = data.nodes as any[]
+          const edgesToPaste = (data.edges || []) as any[]
+
+          if (nodesToPaste.length === 0) return
+
+          // Find the top-left corner of the copied nodes to calculate offset
+          const minX = Math.min(...nodesToPaste.filter(n => !n.parentId).map(n => n.position?.x ?? 0))
+          const minY = Math.min(...nodesToPaste.filter(n => !n.parentId).map(n => n.position?.y ?? 0))
+
+          // Create ID mapping for all nodes
+          const idMap = new Map<string, string>()
+          nodesToPaste.forEach((node, index) => {
+            idMap.set(node.id, `${node.type}-${Date.now()}-${index}`)
+          })
+
+          // Create pasted nodes with new IDs and positions
+          const pastedNodes = nodesToPaste.map((node) => {
+            const newId = idMap.get(node.id) || `${node.type}-${Date.now()}`
+            const mappedParentId = node.parentId && idMap.has(node.parentId)
+              ? idMap.get(node.parentId)
+              : node.parentId
+
+            // Only add "Copy of" prefix to group titles
+            let nodeData = { ...node.data }
+            if (node.type === 'workflowGroup' && nodeData.title) {
+              nodeData = {
+                ...nodeData,
+                title: `Copy of ${nodeData.title}`,
+                label: `Copy of ${nodeData.label || nodeData.title}`,
+              }
+            }
+
+            // Calculate new position: offset from original min position to paste position
+            const newPosition = mappedParentId
+              ? { x: node.position.x, y: node.position.y } // Keep relative position for children
+              : {
+                x: pasteOffset!.x + (node.position.x - minX),
+                y: pasteOffset!.y + (node.position.y - minY),
+              }
+
+            return {
+              ...node,
+              id: newId,
+              position: newPosition,
+              parentId: mappedParentId,
+              selected: !mappedParentId, // Only select top-level nodes
+              data: nodeData,
+            }
+          })
+
+          // Create pasted edges with remapped IDs
+          const pastedEdges = edgesToPaste.map((edge, index) => ({
+            ...edge,
+            id: `edge-${Date.now()}-${index}`,
+            source: idMap.get(edge.source) || edge.source,
+            target: idMap.get(edge.target) || edge.target,
+          }))
+
+          setNodes((nds) => nds.map(n => ({ ...n, selected: false })).concat(pastedNodes))
+          setEdges((eds) => [...eds, ...pastedEdges])
+          toast.success(nodesToPaste.length > 1 ? "Selection pasted" : "Node pasted")
+          return
+        }
+
+        // Handle legacy format: single node object
+        if (!data.id || !data.type) return
+
         const newNode = {
           ...data,
           id: `${data.type}-${Date.now()}`,
-          position: newPosition,
+          position: pasteOffset,
           selected: true,
           data: {
             ...data.data,
-            label: `${data.data.label} (Copy)`,
+            // Only add prefix for groups
+            ...(data.type === 'workflowGroup' && data.data?.title ? {
+              title: `Copy of ${data.data.title}`,
+              label: `Copy of ${data.data.label || data.data.title}`,
+            } : {}),
           },
         }
 
@@ -2064,7 +2167,7 @@ function WorkflowEditorInner() {
         // items might not be a node
       }
     },
-    [getViewport, setNodes, screenToFlowPosition]
+    [getViewport, setNodes, setEdges, screenToFlowPosition]
   )
 
   // Keyboard shortcuts
@@ -2077,13 +2180,45 @@ function WorkflowEditorInner() {
 
       // Copy: Cmd+C / Ctrl+C
       if ((e.metaKey || e.ctrlKey) && e.key === 'c') {
-        const selected = nodes.find(n => n.selected)
-        if (selected) {
+        const selectedNodes = nodes.filter(n => n.selected)
+        if (selectedNodes.length > 0) {
           e.preventDefault()
           try {
-            await navigator.clipboard.writeText(JSON.stringify(selected, null, 2))
-            toast.success("Node copied to clipboard")
-            // console.log('Copied node:', selected.id)
+            // Helper to get group children
+            const getGroupDescendants = (groupId: string): typeof nodes => {
+              const children = nodes.filter(n => n.parentId === groupId)
+              const descendants = [...children]
+              children.forEach(child => {
+                if (child.type === 'workflowGroup') {
+                  descendants.push(...getGroupDescendants(child.id))
+                }
+              })
+              return descendants
+            }
+
+            // Include children of any selected groups
+            let nodesToCopy = [...selectedNodes]
+            selectedNodes.forEach(n => {
+              if (n.type === 'workflowGroup') {
+                const descendants = getGroupDescendants(n.id)
+                descendants.forEach(d => {
+                  if (!nodesToCopy.find(nd => nd.id === d.id)) {
+                    nodesToCopy.push(d)
+                  }
+                })
+              }
+            })
+
+            const copyNodeIds = new Set(nodesToCopy.map(n => n.id))
+
+            // Find edges connecting copied nodes
+            const edgesToCopy = edges.filter(e =>
+              copyNodeIds.has(e.source) && copyNodeIds.has(e.target)
+            )
+
+            const clipboardData = { nodes: nodesToCopy, edges: edgesToCopy }
+            await navigator.clipboard.writeText(JSON.stringify(clipboardData, null, 2))
+            toast.success(nodesToCopy.length > 1 ? "Selection copied" : "Node copied")
           } catch (err) {
             console.error('Copy failed:', err)
             toast.error("Failed to copy")
@@ -2109,7 +2244,7 @@ function WorkflowEditorInner() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handleGroupSelectedNodes, handlePaste, interactionMode, nodes])
+  }, [handleGroupSelectedNodes, handlePaste, interactionMode, nodes, edges])
 
   return (
     <div className="relative flex h-screen w-full bg-background">
@@ -2194,6 +2329,7 @@ function WorkflowEditorInner() {
             onPaste={handlePaste}
             selectedNodeCount={selectedNodes.length}
             onGroupSelection={handleGroupSelectedNodes}
+            onCopySelection={handleCopySelection}
             onDuplicateSelection={handleDuplicateSelection}
             onDeleteSelection={handleDeleteSelection}
           >
@@ -2228,7 +2364,8 @@ function WorkflowEditorInner() {
               edgesReconnectable
               selectionOnDrag={interactionMode === 'select'}
               selectionMode={SelectionMode.Partial}
-              panOnDrag={interactionMode === 'pan'}
+              panOnDrag={interactionMode === 'pan' ? true : [1, 2]}
+              panOnScroll={interactionMode === 'select'}
               nodesDraggable={interactionMode === 'select'}
               elementsSelectable={interactionMode === 'select'}
               connectionLineStyle={{

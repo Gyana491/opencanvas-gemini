@@ -98,8 +98,9 @@ export function NodeContextMenu({
     type = "context",
     asChild = false,
 }: NodeContextMenuProps) {
-    const { getNode, setNodes, addNodes, getNodes } = useReactFlow()
+    const { getNode, setNodes, addNodes, getNodes, getEdges, setEdges } = useReactFlow()
     const allNodes = getNodes() as FlowNodeLike[]
+    const allEdges = getEdges()
     const selectedNodes = allNodes.filter((n) => n.selected)
     const selectedIds = useMemo(() => new Set(selectedNodes.map((n) => n.id)), [selectedNodes])
     const selectedGroupableNodes = selectedNodes.filter((n) => n.type !== GROUP_NODE_TYPE)
@@ -210,58 +211,102 @@ export function NodeContextMenu({
     }, [nodeId, selectedIds, selectedNodes.length, setNodes])
 
     const handleDuplicate = useCallback(() => {
-        if (selectedNodes.length > 1 && selectedIds.has(nodeId)) {
-            const idMap = new Map<string, string>()
-            selectedNodes.forEach((selectedNode, index) => {
-                idMap.set(selectedNode.id, `${selectedNode.type}-${Date.now()}-${index}`)
-            })
-
-            const duplicatedNodes: Node<Record<string, unknown>>[] = selectedNodes.map((selectedNode) => {
-                const mappedParentId = selectedNode.parentId && selectedIds.has(selectedNode.parentId)
-                    ? idMap.get(selectedNode.parentId)
-                    : selectedNode.parentId
-
-                return {
-                    ...selectedNode,
-                    type: selectedNode.type || 'textInput',
-                    data: selectedNode.data ?? {},
-                    id: idMap.get(selectedNode.id) || `${selectedNode.type}-${Date.now()}`,
-                    position: {
-                        x: selectedNode.position.x + 40,
-                        y: selectedNode.position.y + 40,
-                    },
-                    parentId: mappedParentId,
-                    selected: true,
+        // Helper to get all nodes in a group (recursively)
+        const getGroupDescendants = (groupId: string): FlowNodeLike[] => {
+            const children = allNodes.filter(n => n.parentId === groupId)
+            const descendants: FlowNodeLike[] = [...children]
+            children.forEach(child => {
+                if (child.type === GROUP_NODE_TYPE) {
+                    descendants.push(...getGroupDescendants(child.id))
                 }
             })
-
-            setNodes((nodes) => [...nodes.map((n) => ({ ...n, selected: false })), ...duplicatedNodes])
-            toast.success("Duplicated selected nodes")
-            return
+            return descendants
         }
 
-        const node = getNode(nodeId)
-        if (!node) return
+        // Determine nodes to duplicate
+        let nodesToDuplicate: FlowNodeLike[] = []
 
-        const position = {
-            x: node.position.x + 50,
-            y: node.position.y + 50,
+        if (selectedNodes.length > 1 && selectedIds.has(nodeId)) {
+            // Multi-selection
+            nodesToDuplicate = [...selectedNodes]
+            // Include children of any selected groups
+            selectedNodes.forEach(n => {
+                if (n.type === GROUP_NODE_TYPE) {
+                    const descendants = getGroupDescendants(n.id)
+                    descendants.forEach(d => {
+                        if (!nodesToDuplicate.find(nd => nd.id === d.id)) {
+                            nodesToDuplicate.push(d)
+                        }
+                    })
+                }
+            })
+        } else {
+            // Single node
+            const node = getNode(nodeId) as FlowNodeLike | undefined
+            if (!node) return
+            nodesToDuplicate = [node]
+            // If it's a group, include all children
+            if (node.type === GROUP_NODE_TYPE) {
+                nodesToDuplicate.push(...getGroupDescendants(node.id))
+            }
         }
 
-        const newNode = {
-            ...node,
-            id: `${node.type}-${Date.now()}`,
-            position,
-            selected: false,
-            data: {
-                ...node.data,
-                label: `${node.data.label} (Copy)`,
-            },
-        }
+        // Create ID mapping
+        const idMap = new Map<string, string>()
+        nodesToDuplicate.forEach((node, index) => {
+            idMap.set(node.id, `${node.type}-${Date.now()}-${index}`)
+        })
 
-        addNodes(newNode)
-        toast.success("Node duplicated")
-    }, [nodeId, getNode, addNodes, selectedIds, selectedNodes, setNodes])
+        const duplicatedNodeIds = new Set(nodesToDuplicate.map(n => n.id))
+
+        // Find edges that connect nodes within our duplication set
+        const edgesToDuplicate = allEdges.filter(e =>
+            duplicatedNodeIds.has(e.source) && duplicatedNodeIds.has(e.target)
+        )
+
+        // Duplicate nodes with updated IDs and positions
+        const duplicatedNodes: Node<Record<string, unknown>>[] = nodesToDuplicate.map((node) => {
+            const newId = idMap.get(node.id) || `${node.type}-${Date.now()}`
+            const mappedParentId = node.parentId && idMap.has(node.parentId)
+                ? idMap.get(node.parentId)
+                : node.parentId
+
+            // Only add "Duplicate of" prefix to group titles
+            let nodeData = { ...node.data } as Record<string, unknown>
+            if (node.type === GROUP_NODE_TYPE && nodeData.title) {
+                nodeData = {
+                    ...nodeData,
+                    title: `Duplicate of ${nodeData.title}`,
+                    label: `Duplicate of ${nodeData.label || nodeData.title}`,
+                }
+            }
+
+            return {
+                ...node,
+                type: node.type || 'textInput',
+                data: nodeData,
+                id: newId,
+                position: {
+                    x: node.position.x + (mappedParentId ? 0 : 40),
+                    y: node.position.y + (mappedParentId ? 0 : 40),
+                },
+                parentId: mappedParentId,
+                selected: !mappedParentId, // Only select top-level duplicated nodes
+            }
+        })
+
+        // Duplicate edges with remapped IDs
+        const duplicatedEdges = edgesToDuplicate.map((edge, index) => ({
+            ...edge,
+            id: `edge-${Date.now()}-${index}`,
+            source: idMap.get(edge.source) || edge.source,
+            target: idMap.get(edge.target) || edge.target,
+        }))
+
+        setNodes((nodes) => [...nodes.map((n) => ({ ...n, selected: false })), ...duplicatedNodes])
+        setEdges((edges) => [...edges, ...duplicatedEdges])
+        toast.success(nodesToDuplicate.length > 1 ? "Duplicated selection" : "Node duplicated")
+    }, [nodeId, getNode, allNodes, allEdges, selectedIds, selectedNodes, setNodes, setEdges])
 
     const handleUngroup = useCallback(() => {
         const node = getNode(nodeId)
@@ -308,18 +353,66 @@ export function NodeContextMenu({
     }, [nodeId, setNodes])
 
     const handleCopy = useCallback(() => {
-        const node = getNode(nodeId)
-        if (!node) return
-
-        // Simple copy to clipboard logic for node data
-        // In a real app we might want to internal clipboard or serialize
-        try {
-            navigator.clipboard.writeText(JSON.stringify(node, null, 2))
-            toast.success("Node data copied to clipboard")
-        } catch {
-            toast.error("Failed to copy node data")
+        // Helper to get all nodes in a group (recursively)
+        const getGroupDescendants = (groupId: string): FlowNodeLike[] => {
+            const children = allNodes.filter(n => n.parentId === groupId)
+            const descendants: FlowNodeLike[] = [...children]
+            children.forEach(child => {
+                if (child.type === GROUP_NODE_TYPE) {
+                    descendants.push(...getGroupDescendants(child.id))
+                }
+            })
+            return descendants
         }
-    }, [nodeId, getNode])
+
+        // Determine nodes to copy
+        let nodesToCopy: FlowNodeLike[] = []
+
+        if (selectedNodes.length > 1 && selectedIds.has(nodeId)) {
+            // Multi-selection
+            nodesToCopy = [...selectedNodes]
+            // Include children of any selected groups
+            selectedNodes.forEach(n => {
+                if (n.type === GROUP_NODE_TYPE) {
+                    const descendants = getGroupDescendants(n.id)
+                    descendants.forEach(d => {
+                        if (!nodesToCopy.find(nd => nd.id === d.id)) {
+                            nodesToCopy.push(d)
+                        }
+                    })
+                }
+            })
+        } else {
+            // Single node
+            const node = getNode(nodeId) as FlowNodeLike | undefined
+            if (!node) return
+            nodesToCopy = [node]
+            // If it's a group, include all children
+            if (node.type === GROUP_NODE_TYPE) {
+                nodesToCopy.push(...getGroupDescendants(node.id))
+            }
+        }
+
+        const copyNodeIds = new Set(nodesToCopy.map(n => n.id))
+
+        // Find edges that connect nodes within our copy set
+        const edgesToCopy = allEdges.filter(e =>
+            copyNodeIds.has(e.source) && copyNodeIds.has(e.target)
+        )
+
+        // Prepare clipboard data
+        const clipboardData = {
+            nodes: nodesToCopy,
+            edges: edgesToCopy,
+        }
+
+        try {
+            navigator.clipboard.writeText(JSON.stringify(clipboardData, null, 2))
+            toast.success(nodesToCopy.length > 1 ? "Selection copied to clipboard" : "Node copied to clipboard")
+        } catch {
+            toast.error("Failed to copy")
+        }
+    }, [nodeId, getNode, allNodes, allEdges, selectedIds, selectedNodes])
 
     const handleDownload = useCallback(() => {
         const node = getNode(nodeId)
