@@ -15,8 +15,8 @@ export interface Tool {
 export const TOOLS: Tool[] = [
     {
         id: 'textInput',
-        name: 'Text Input',
-        title: 'Text Input',
+        name: 'Prompt',
+        title: 'Prompt',
         description: 'Enter text or prompts',
         category: 'input',
         outputs: [

@@ -58,7 +58,7 @@ export const TextInputNode = memo(({ data, selected, id }: NodeProps) => {
               <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
                 <FileText className="w-4 h-4 text-blue-500" />
               </div>
-              <h3 className="font-semibold text-sm">Text Input</h3>
+              <h3 className="font-semibold text-sm">Prompt</h3>
             </div>
             <NodeContextMenu nodeId={id} type="dropdown" asChild>
               <Button variant="ghost" size="icon" className="h-6 w-6">
