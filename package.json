@@ -3,10 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "npx tsx lib/prisma.ts && next dev",
+    "dev": "npx tsx lib/prisma.ts && next dev --experimental-https",
     "build": "next build",
     "start": "next start && npx tsx lib/prisma.ts",
     "lint": "eslint",
+    "generate:pwa-icons": "node scripts/generate-pwa-icons.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {
