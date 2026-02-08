@@ -22,6 +22,7 @@ export const BlurNode = memo(({ data, selected, id }: NodeProps) => {
     const previewCanvasRef = useRef<HTMLCanvasElement>(null)
     const processingCanvasRef = useRef<HTMLCanvasElement>(null)
     const latestOutputRef = useRef<string | null>(null)
+    const outputObjectUrlRef = useRef<string | null>(null)
 
     // Get connected image from data
     const connectedImage = data.connectedImage as string | undefined
@@ -98,17 +99,24 @@ export const BlurNode = memo(({ data, selected, id }: NodeProps) => {
         }
     }, [])
 
+    const revokeOutputUrl = useCallback(() => {
+        if (outputObjectUrlRef.current) {
+            URL.revokeObjectURL(outputObjectUrlRef.current)
+            outputObjectUrlRef.current = null
+        }
+    }, [])
+
     // Function to generate current output on-demand
     const getCurrentOutput = useCallback(() => {
         if (latestOutputRef.current) return latestOutputRef.current
-        const canvas = processingCanvasRef.current
-        if (!canvas || !connectedImage) return null
-        try {
-            return canvas.toDataURL('image/png')
-        } catch {
-            return null
+        return null
+    }, [])
+
+    useEffect(() => {
+        return () => {
+            revokeOutputUrl()
         }
-    }, [connectedImage])
+    }, [revokeOutputUrl])
 
     // Initialize defaults immediately on mount
     useEffect(() => {
@@ -124,6 +132,7 @@ export const BlurNode = memo(({ data, selected, id }: NodeProps) => {
     useEffect(() => {
         if (!connectedImage) {
             clearCanvases()
+            revokeOutputUrl()
             latestOutputRef.current = null
             // Store function reference for downstream nodes
             updateNodeData(id, { getOutput: null, output: null, imageOutput: null })
@@ -177,20 +186,26 @@ export const BlurNode = memo(({ data, selected, id }: NodeProps) => {
                 }
             }
 
-            let outputDataUrl: string | null = null
-            try {
-                outputDataUrl = processingCanvas.toDataURL('image/png')
-            } catch {
-                outputDataUrl = null
-            }
-            latestOutputRef.current = outputDataUrl
+            processingCanvas.toBlob((blob) => {
+                if (cancelled) return
+                if (!blob) {
+                    latestOutputRef.current = null
+                    updateNodeData(id, { getOutput: getCurrentOutput, output: null, imageOutput: null })
+                    return
+                }
 
-            // Store function reference for downstream nodes (not the data!)
-            updateNodeData(id, {
-                getOutput: getCurrentOutput,
-                output: outputDataUrl,
-                imageOutput: outputDataUrl,
-            })
+                revokeOutputUrl()
+                const runtimeUrl = URL.createObjectURL(blob)
+                outputObjectUrlRef.current = runtimeUrl
+                latestOutputRef.current = runtimeUrl
+
+                // Store function reference and runtime blob URL for downstream nodes.
+                updateNodeData(id, {
+                    getOutput: getCurrentOutput,
+                    output: runtimeUrl,
+                    imageOutput: runtimeUrl,
+                })
+            }, 'image/png')
         }
         img.onload = renderToCanvases
 
@@ -199,6 +214,7 @@ export const BlurNode = memo(({ data, selected, id }: NodeProps) => {
             if (cancelled) return
             console.error('Failed to load image:', connectedImage)
             clearCanvases()
+            revokeOutputUrl()
             latestOutputRef.current = null
             updateNodeData(id, { getOutput: null, output: null, imageOutput: null })
         }
@@ -210,7 +226,7 @@ export const BlurNode = memo(({ data, selected, id }: NodeProps) => {
         return () => {
             cancelled = true
         }
-    }, [connectedImage, blurSize, blurType, id, updateNodeData, applyBoxBlur, getCurrentOutput, clearCanvases])
+    }, [connectedImage, blurSize, blurType, id, updateNodeData, applyBoxBlur, getCurrentOutput, clearCanvases, revokeOutputUrl])
 
     // Handlers for control changes
     const handleBlurTypeChange = (val: 'box' | 'gaussian') => {

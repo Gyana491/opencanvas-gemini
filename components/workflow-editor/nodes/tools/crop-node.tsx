@@ -74,6 +74,7 @@ export const CropNode = memo(({ data, selected, id }: NodeProps) => {
     const previewCanvasRef = useRef<HTMLCanvasElement>(null)
     const processingCanvasRef = useRef<HTMLCanvasElement>(null)
     const latestImageOutputRef = useRef<string | null>(null)
+    const outputObjectUrlRef = useRef<string | null>(null)
     const mediaSizeRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 })
     const interactionRef = useRef<InteractionState | null>(null)
     const pointerUpHandlerRef = useRef<((event: PointerEvent) => void) | null>(null)
@@ -100,16 +101,23 @@ export const CropNode = memo(({ data, selected, id }: NodeProps) => {
         }
     }, [])
 
+    const revokeOutputUrl = useCallback(() => {
+        if (outputObjectUrlRef.current) {
+            URL.revokeObjectURL(outputObjectUrlRef.current)
+            outputObjectUrlRef.current = null
+        }
+    }, [])
+
     const getCurrentOutput = useCallback(() => {
         if (latestImageOutputRef.current) return latestImageOutputRef.current
-        const canvas = processingCanvasRef.current
-        if (!canvas || !connectedImage) return null
-        try {
-            return canvas.toDataURL('image/png')
-        } catch {
-            return null
+        return null
+    }, [])
+
+    useEffect(() => {
+        return () => {
+            revokeOutputUrl()
         }
-    }, [connectedImage])
+    }, [revokeOutputUrl])
 
     useEffect(() => {
         const requiredKeys = ['aspectRatio', 'cropWidth', 'cropHeight', 'lockAspect'] as const
@@ -392,6 +400,7 @@ export const CropNode = memo(({ data, selected, id }: NodeProps) => {
             setCanvasCursor(null, false)
             mediaSizeRef.current = { width: 0, height: 0 }
             clearCanvases()
+            revokeOutputUrl()
             latestImageOutputRef.current = null
             updateNodeData(id, {
                 getOutput: null,
@@ -413,21 +422,27 @@ export const CropNode = memo(({ data, selected, id }: NodeProps) => {
             if (!cropRect) return
 
             const processingCanvas = processingCanvasRef.current
-            let outputDataUrl: string | null = null
-            if (processingCanvas) {
-                try {
-                    outputDataUrl = processingCanvas.toDataURL('image/png')
-                } catch {
-                    outputDataUrl = null
+            if (!processingCanvas) return
+
+            processingCanvas.toBlob((blob) => {
+                if (cancelled) return
+                if (!blob) {
+                    latestImageOutputRef.current = null
+                    updateNodeData(id, { getOutput: getCurrentOutput, output: null, imageOutput: null, cropRect })
+                    return
                 }
-            }
-            latestImageOutputRef.current = outputDataUrl
-            updateNodeData(id, {
-                getOutput: getCurrentOutput,
-                output: outputDataUrl,
-                imageOutput: outputDataUrl,
-                cropRect,
-            })
+
+                revokeOutputUrl()
+                const runtimeUrl = URL.createObjectURL(blob)
+                outputObjectUrlRef.current = runtimeUrl
+                latestImageOutputRef.current = runtimeUrl
+                updateNodeData(id, {
+                    getOutput: getCurrentOutput,
+                    output: runtimeUrl,
+                    imageOutput: runtimeUrl,
+                    cropRect,
+                })
+            }, 'image/png')
         }
 
         img.onload = render
@@ -435,6 +450,7 @@ export const CropNode = memo(({ data, selected, id }: NodeProps) => {
             if (cancelled) return
             mediaSizeRef.current = { width: 0, height: 0 }
             clearCanvases()
+            revokeOutputUrl()
             latestImageOutputRef.current = null
             setCanvasCursor(null, false)
             updateNodeData(id, {
@@ -450,7 +466,7 @@ export const CropNode = memo(({ data, selected, id }: NodeProps) => {
         return () => {
             cancelled = true
         }
-    }, [connectedImage, clearCanvases, clearPointerListeners, drawPreviewAndProcessing, getCurrentOutput, id, setCanvasCursor, updateNodeData])
+    }, [connectedImage, clearCanvases, clearPointerListeners, drawPreviewAndProcessing, getCurrentOutput, id, revokeOutputUrl, setCanvasCursor, updateNodeData])
 
     useEffect(() => {
         const sourceW = mediaSizeRef.current.width

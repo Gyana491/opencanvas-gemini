@@ -217,6 +217,11 @@ function SharedWorkflowInner() {
           onNodesChange={undefined}
           onEdgesChange={undefined}
           onConnect={undefined}
+          minZoom={0.05}
+          maxZoom={10}
+          zoomOnScroll
+          zoomOnPinch
+          zoomOnDoubleClick
           fitView
           nodesDraggable={false}
           nodesConnectable={false}

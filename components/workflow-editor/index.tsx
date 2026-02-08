@@ -21,7 +21,7 @@ import {
   MarkerType,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Activity, Download, Share2 } from 'lucide-react'
+import { Activity, Download, Loader2, Share2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { toPng } from 'html-to-image'
 
@@ -127,6 +127,44 @@ function getEdgeVisualProps(sourceHandle: string | null | undefined, animated: b
   }
 }
 
+const RUNTIME_ONLY_TOOL_NODE_TYPES = new Set(['blur', 'colorGrading', 'crop'])
+
+function stripRuntimeDataFromNodeData(nodeType: string | undefined, data: Record<string, unknown>) {
+  const cleaned: Record<string, unknown> = {}
+
+  for (const [key, value] of Object.entries(data)) {
+    if (typeof value === 'function') {
+      continue
+    }
+
+    // Connection payloads are derived from edges and can be rebuilt at runtime.
+    if (
+      key === 'connectedPrompt' ||
+      key === 'connectedVideo' ||
+      key.startsWith('connectedImage') ||
+      key.startsWith('connectedRefImage')
+    ) {
+      continue
+    }
+
+    // Blob URLs are runtime-only and invalid after reload.
+    if (typeof value === 'string' && value.startsWith('blob:')) {
+      continue
+    }
+
+    if (
+      RUNTIME_ONLY_TOOL_NODE_TYPES.has(nodeType || '') &&
+      (key === 'output' || key === 'imageOutput' || key === 'videoOutput' || key === 'getOutput')
+    ) {
+      continue
+    }
+
+    cleaned[key] = value
+  }
+
+  return cleaned
+}
+
 function getNodeHandles(nodeType: string | undefined, data?: any): NodeHandleMeta {
   if (!nodeType) return { inputs: [], outputs: [] }
 
@@ -182,6 +220,7 @@ function WorkflowEditorInner() {
   const [isEditingName, setIsEditingName] = useState(false)
   const [newName, setNewName] = useState("")
   const [workflowName, setWorkflowName] = useState("")
+  const [isInitialGraphLoading, setIsInitialGraphLoading] = useState(true)
 
   const { createWorkflow, loadWorkflow, saveWorkflow, renameWorkflow, deleteWorkflow, duplicateWorkflow, isLoading } = useWorkflow()
 
@@ -195,7 +234,12 @@ function WorkflowEditorInner() {
   // Load workflow on mount
   useEffect(() => {
     async function loadWorkflowData() {
-      if (!workflowId) return
+      if (!workflowId) {
+        setIsInitialGraphLoading(false)
+        return
+      }
+
+      setIsInitialGraphLoading(true)
 
       try {
         if (workflowId === 'new') {
@@ -232,7 +276,15 @@ function WorkflowEditorInner() {
             })
 
             setWorkflowName(workflow.name)
-            setNodes((loadedNodes || []) as Node<WorkflowNodeData>[])
+            const sanitizedLoadedNodes = ((loadedNodes || []) as Node<WorkflowNodeData>[]).map((node) => {
+              const rawData = (node.data || {}) as Record<string, unknown>
+              return {
+                ...node,
+                data: stripRuntimeDataFromNodeData(node.type, rawData),
+              }
+            })
+
+            setNodes(sanitizedLoadedNodes)
             setEdges(
               (loadedEdges || []).map((edge: Edge) => ({
                 ...edge,
@@ -254,6 +306,7 @@ function WorkflowEditorInner() {
         console.error('[Workflow Editor] Error loading workflow:', error)
       } finally {
         creationInProgressRef.current = false
+        setIsInitialGraphLoading(false)
       }
     }
 
@@ -270,13 +323,7 @@ function WorkflowEditorInner() {
   const getSerializableGraph = useCallback((nodes: Node[], edges: Edge[]) => {
     const serializableNodes = nodes.map(node => {
       const { data, ...rest } = node
-      // Create a clean data object without functions
-      const cleanData = Object.entries(data).reduce((acc, [key, value]) => {
-        if (typeof value !== 'function') {
-          acc[key] = value
-        }
-        return acc
-      }, {} as Record<string, any>)
+      const cleanData = stripRuntimeDataFromNodeData(node.type, (data || {}) as Record<string, unknown>)
 
       return {
         ...rest,
@@ -294,32 +341,43 @@ function WorkflowEditorInner() {
       // Extended delay to ensure all images are loaded
       await new Promise(resolve => setTimeout(resolve, 500))
 
-      const dataUrl = await toPng(reactFlowWrapper.current, {
-        backgroundColor: '#fff',
-        width: 1280,
-        height: 720,
-        cacheBust: true,
-        pixelRatio: 1,
-        skipAutoScale: true,
-        includeQueryParams: true,
-        filter: (node: HTMLElement) => {
-          // Guard against null/undefined nodes
-          if (!node || !node.classList) {
-            return true
-          }
-          // Exclude controls, minimap, and panels
-          const excludeClasses = [
-            'react-flow__controls',
-            'react-flow__minimap',
-            'react-flow__panel',
-            'react-flow__attribution'
-          ]
-          if (excludeClasses.some(cls => node.classList.contains(cls))) {
-            return false
-          }
-          return true
+      const captureTarget = reactFlowWrapper.current.querySelector('.react-flow__viewport') as HTMLElement | null
+      const target = captureTarget || reactFlowWrapper.current
+      const excludeClasses = [
+        'react-flow__controls',
+        'react-flow__minimap',
+        'react-flow__panel',
+        'react-flow__attribution'
+      ]
+      const filterNode = (node: HTMLElement) => {
+        // html-to-image may invoke filter on non-Element nodes; skip those.
+        if (!(node instanceof Element)) {
+          return false
         }
-      })
+        return !excludeClasses.some(cls => node.classList.contains(cls))
+      }
+
+      let dataUrl: string
+      try {
+        dataUrl = await toPng(target, {
+          backgroundColor: '#fff',
+          width: 1280,
+          height: 720,
+          cacheBust: true,
+          pixelRatio: 1,
+          skipAutoScale: true,
+          includeQueryParams: true,
+          filter: filterNode,
+        })
+      } catch (primaryError) {
+        console.warn('[Workflow Editor] Primary thumbnail capture failed, retrying with safe options:', primaryError)
+        dataUrl = await toPng(target, {
+          backgroundColor: '#fff',
+          cacheBust: true,
+          pixelRatio: 1,
+          filter: filterNode,
+        })
+      }
 
       // Convert dataUrl to blob
       const res = await fetch(dataUrl)
@@ -1051,7 +1109,7 @@ function WorkflowEditorInner() {
   }, [nodes, handlePaste])
 
   return (
-    <div className="flex h-screen w-full bg-background">
+    <div className="relative flex h-screen w-full bg-background">
       {/* Minimal left sidebar with logo, search, layers - always visible */}
       <EditorSidebar
         onSearchClick={() => setIsLibraryOpen(true)}
@@ -1161,6 +1219,11 @@ function WorkflowEditorInner() {
               connectionLineStyle={{
                 stroke: getEdgeColorFromSourceHandle(connectingSourceHandle),
               }}
+              minZoom={0.05}
+              maxZoom={10}
+              zoomOnScroll
+              zoomOnPinch
+              zoomOnDoubleClick
               fitView
               className="bg-background"
               proOptions={{ hideAttribution: true }}
@@ -1285,6 +1348,15 @@ function WorkflowEditorInner() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {isInitialGraphLoading && (
+        <div className="absolute inset-0 z-[70] flex items-center justify-center bg-background/80 backdrop-blur-sm">
+          <div className="flex items-center gap-2 rounded-md border bg-card px-4 py-3 text-sm text-foreground shadow-sm">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Loading workflow...</span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

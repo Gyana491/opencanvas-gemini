@@ -38,6 +38,7 @@ export const ColorGradingNode = memo(({ data, selected, id }: NodeProps) => {
     const previewCanvasRef = useRef<HTMLCanvasElement>(null)
     const processingCanvasRef = useRef<HTMLCanvasElement>(null)
     const latestOutputRef = useRef<string | null>(null)
+    const outputObjectUrlRef = useRef<string | null>(null)
 
     const connectedImage = data.connectedImage as string | undefined
 
@@ -73,16 +74,23 @@ export const ColorGradingNode = memo(({ data, selected, id }: NodeProps) => {
         }
     }, [])
 
+    const revokeOutputUrl = useCallback(() => {
+        if (outputObjectUrlRef.current) {
+            URL.revokeObjectURL(outputObjectUrlRef.current)
+            outputObjectUrlRef.current = null
+        }
+    }, [])
+
     const getCurrentOutput = useCallback(() => {
         if (latestOutputRef.current) return latestOutputRef.current
-        const canvas = processingCanvasRef.current
-        if (!canvas || !connectedImage) return null
-        try {
-            return canvas.toDataURL('image/png')
-        } catch {
-            return null
+        return null
+    }, [])
+
+    useEffect(() => {
+        return () => {
+            revokeOutputUrl()
         }
-    }, [connectedImage])
+    }, [revokeOutputUrl])
 
     useEffect(() => {
         const requiredKeys = [
@@ -132,6 +140,7 @@ export const ColorGradingNode = memo(({ data, selected, id }: NodeProps) => {
     useEffect(() => {
         if (!connectedImage) {
             clearCanvases()
+            revokeOutputUrl()
             latestOutputRef.current = null
             updateNodeData(id, { getOutput: null, output: null, imageOutput: null })
             return
@@ -171,25 +180,31 @@ export const ColorGradingNode = memo(({ data, selected, id }: NodeProps) => {
             applyLevels(previewCtx, img.width, img.height, levels)
             applyLevels(processingCtx, img.width, img.height, levels)
 
-            let outputDataUrl: string | null = null
-            try {
-                outputDataUrl = processingCanvas.toDataURL('image/png')
-            } catch {
-                outputDataUrl = null
-            }
+            processingCanvas.toBlob((blob) => {
+                if (cancelled) return
+                if (!blob) {
+                    latestOutputRef.current = null
+                    updateNodeData(id, { getOutput: getCurrentOutput, output: null, imageOutput: null })
+                    return
+                }
 
-            latestOutputRef.current = outputDataUrl
-            updateNodeData(id, {
-                getOutput: getCurrentOutput,
-                output: outputDataUrl,
-                imageOutput: outputDataUrl,
-            })
+                revokeOutputUrl()
+                const runtimeUrl = URL.createObjectURL(blob)
+                outputObjectUrlRef.current = runtimeUrl
+                latestOutputRef.current = runtimeUrl
+                updateNodeData(id, {
+                    getOutput: getCurrentOutput,
+                    output: runtimeUrl,
+                    imageOutput: runtimeUrl,
+                })
+            }, 'image/png')
         }
 
         img.onload = renderToCanvases
         img.onerror = () => {
             if (cancelled) return
             clearCanvases()
+            revokeOutputUrl()
             latestOutputRef.current = null
             updateNodeData(id, { getOutput: null, output: null, imageOutput: null })
         }
@@ -211,6 +226,7 @@ export const ColorGradingNode = memo(({ data, selected, id }: NodeProps) => {
         applyLevels,
         clearCanvases,
         getCurrentOutput,
+        revokeOutputUrl,
         updateNodeData,
     ])
 

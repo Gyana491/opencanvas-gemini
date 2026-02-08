@@ -15,7 +15,7 @@ const positionSchema = z.object({
 export const viewportSchema = z.object({
     x: z.number(),
     y: z.number(),
-    zoom: z.number().min(0.1).max(10),
+    zoom: z.number().min(0.05).max(10),
 }).default({ x: 0, y: 0, zoom: 1 });
 
 // Handle metadata schema
