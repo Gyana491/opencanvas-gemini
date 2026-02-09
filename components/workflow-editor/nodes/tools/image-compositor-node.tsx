@@ -857,12 +857,7 @@ export const ImageCompositorNode = memo(({ data, selected, id }: NodeProps) => {
       </Card>
 
       {isEditorOpen && typeof document !== 'undefined' && createPortal(
-        <div
-          className="fixed inset-0 z-[120] bg-background"
-          onPointerDownCapture={(event) => event.stopPropagation()}
-          onClickCapture={(event) => event.stopPropagation()}
-          onKeyDownCapture={(event) => event.stopPropagation()}
-        >
+        <div className="fixed inset-0 z-[120] bg-background">
           <div className="h-full w-full grid grid-rows-[56px_minmax(0,1fr)]">
             <div className="px-4 border-b border-border/50 flex items-center justify-between">
               <h2 className="text-base font-semibold">Image Compositor</h2>
