@@ -751,10 +751,16 @@ function WorkflowEditorInner() {
         return !excludeClasses.some(cls => node.classList.contains(cls))
       }
 
+      // Get the actual background color from the canvas (respects light/dark theme)
+      const computedStyle = getComputedStyle(reactFlowWrapper.current)
+      const canvasBackgroundColor = computedStyle.getPropertyValue('--background').trim() ||
+        computedStyle.backgroundColor ||
+        '#fff'
+
       let dataUrl: string
       try {
         dataUrl = await toPng(target, {
-          backgroundColor: '#fff',
+          backgroundColor: canvasBackgroundColor,
           width: 1280,
           height: 720,
           cacheBust: true,
@@ -765,7 +771,7 @@ function WorkflowEditorInner() {
         })
       } catch {
         dataUrl = await toPng(target, {
-          backgroundColor: '#fff',
+          backgroundColor: canvasBackgroundColor,
           cacheBust: true,
           pixelRatio: 1,
           filter: filterNode,
