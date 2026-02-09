@@ -50,6 +50,7 @@ export const Gemini3ProImagePreviewNode = memo(({ data, selected, id }: NodeProp
     const updateNodeInternals = useUpdateNodeInternals();
 
     // Helper function to get fresh data from connected nodes
+    // Accepts ANY node that outputs an image - no node type restrictions
     const getFreshConnectedData = () => {
         const nodes = getNodes();
         const incomingEdges = edges.filter(edge => edge.target === id);
@@ -62,21 +63,24 @@ export const Gemini3ProImagePreviewNode = memo(({ data, selected, id }: NodeProp
             if (!sourceNode) return;
 
             const targetHandle = edge.targetHandle;
+            const sourceData = sourceNode.data as Record<string, unknown>;
 
             // Get prompt from text input
             if (targetHandle === 'prompt') {
                 if (sourceNode.type === 'textInput') {
-                    freshPrompt = (sourceNode.data?.text as string) || '';
+                    freshPrompt = (sourceData?.text as string) || '';
+                } else if (typeof sourceData?.output === 'string') {
+                    freshPrompt = sourceData.output;
                 }
             }
-            // Get images from image handles
+            // Get images from image handles - accept ANY node that outputs an image
             else if (targetHandle === 'image' || targetHandle?.startsWith('image_')) {
                 const imageKey = targetHandle === 'image' ? 'image' : targetHandle;
-                if (sourceNode.type === 'imageUpload') {
-                    freshImages[imageKey] = (sourceNode.data?.imageUrl as string) || '';
-                } else if (sourceNode.type === 'gemini-2.5-flash-image' || sourceNode.type === 'gemini-3-pro-image-preview' || sourceNode.type === 'imagen-4.0-generate-001') {
-                    freshImages[imageKey] = (sourceNode.data?.output as string) || '';
-                }
+                // Try common output properties in order of priority
+                freshImages[imageKey] = (sourceData?.output as string) ||
+                    (sourceData?.imageOutput as string) ||
+                    (sourceData?.imageUrl as string) ||
+                    (sourceData?.assetPath as string) || '';
             }
         });
 

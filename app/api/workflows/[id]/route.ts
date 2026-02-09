@@ -44,9 +44,15 @@ export async function PATCH(
 ) {
     const params = await props.params;
 
-    const session = await auth.api.getSession({
-        headers: req.headers,
-    });
+    let session;
+    try {
+        session = await auth.api.getSession({
+            headers: req.headers,
+        });
+    } catch (error) {
+        console.error("Session Error in PATCH /workflows:", error);
+        return NextResponse.json({ error: "Session error, please try again" }, { status: 500 });
+    }
 
     if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

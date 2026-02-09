@@ -70,10 +70,25 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: 'Missing operation name' }, { status: 400 });
         }
 
-        // Check operation status using fetch
+        // Check operation status using fetch with retry logic
         // Note: getVideosOperation requires the full operation object from generateVideos,
         // but this route only receives the operation name. Using fetch for name-based lookup.
-        const response = await fetch(
+        const fetchWithRetry = async (url: string, options: RequestInit, retries = 3): Promise<Response> => {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    return response;
+                } catch (error: any) {
+                    console.warn(`[Veo Status] Fetch attempt ${i + 1} failed:`, error.code || error.message);
+                    if (i === retries - 1) throw error;
+                    // Wait before retry with exponential backoff
+                    await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+                }
+            }
+            throw new Error('All retry attempts failed');
+        };
+
+        const response = await fetchWithRetry(
             `https://generativelanguage.googleapis.com/v1beta/${name}`,
             {
                 headers: {
