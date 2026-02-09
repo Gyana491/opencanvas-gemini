@@ -25,7 +25,8 @@ interface NodeLibraryProps {
   scrollToCategory?: { id: string; token: number } | null
 }
 
-type HandleFilter = 'any' | 'text' | 'image' | 'video'
+type HandleType = 'text' | 'image' | 'video'
+type HandleFilter = 'any' | HandleType
 const categoryMapping: Record<string, string> = {
   google: 'Google AI Models',
   input: 'Input Nodes',
@@ -125,12 +126,12 @@ export function NodeLibrary({ onAddNode, onClose, isOpen, workflowName, onRename
   const normalizedQuery = searchQuery.trim().toLowerCase()
 
   const nodeCategories = React.useMemo(() => {
-    const resolveHandles = (item: Model | Tool, direction: 'input' | 'output') => {
+    const resolveHandles = (item: Model | Tool, direction: 'input' | 'output'): HandleType[] => {
       const handles = direction === 'input' ? item.inputs : item.outputs
       if (!Array.isArray(handles)) return []
       return handles
         .map((handle) => handle?.type)
-        .filter((type): type is HandleFilter => type === 'text' || type === 'image' || type === 'video')
+        .filter((type): type is HandleType => type === 'text' || type === 'image' || type === 'video')
     }
 
     const filteredItems = normalizedQuery.length === 0
