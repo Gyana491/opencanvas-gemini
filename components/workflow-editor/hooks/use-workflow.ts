@@ -62,7 +62,21 @@ export function useWorkflow() {
                     data: { nodes, edges, viewport },
                 }),
             });
-            if (!res.ok) throw new Error('Failed to save workflow');
+            if (!res.ok) {
+                let message = 'Failed to save workflow';
+                try {
+                    const payload = await res.json();
+                    if (payload?.error) message = payload.error;
+                } catch {
+                    try {
+                        const text = await res.text();
+                        if (text) message = text;
+                    } catch {
+                        // Ignore response parsing failures.
+                    }
+                }
+                return { success: false, error: message };
+            }
             return { success: true };
         } catch (error) {
             console.error(error);

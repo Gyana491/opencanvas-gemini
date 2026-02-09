@@ -56,6 +56,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { DEFAULT_IMAGE_DESCRIBER_SYSTEM_INSTRUCTION } from './nodes/tools/image-describer-node'
 import { DEFAULT_VIDEO_DESCRIBER_SYSTEM_INSTRUCTION } from './nodes/tools/video-describer-node'
 import { DEFAULT_PROMPT_ENHANCER_SYSTEM_INSTRUCTION } from './nodes/tools/prompt-enhancer-node'
+import { usePreventNavigationScroll } from '@/hooks/use-prevent-navigation-scroll'
 
 const NODES_WITH_PROPERTIES = [
   'imagen-4.0-generate-001',
@@ -517,6 +518,8 @@ function WorkflowEditorInner() {
   const params = useParams()
   const router = useRouter()
   const workflowId = params.id as string
+
+  usePreventNavigationScroll()
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<WorkflowNodeData>>(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
