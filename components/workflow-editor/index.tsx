@@ -752,10 +752,13 @@ function WorkflowEditorInner() {
       }
 
       // Get the actual background color from the canvas (respects light/dark theme)
-      const computedStyle = getComputedStyle(reactFlowWrapper.current)
-      const canvasBackgroundColor = computedStyle.getPropertyValue('--background').trim() ||
-        computedStyle.backgroundColor ||
-        '#fff'
+      // The --background CSS variable uses oklch format which html-to-image doesn't understand
+      // Instead, get the computed backgroundColor from the actual React Flow pane element
+      const paneElement = reactFlowWrapper.current.querySelector('.react-flow__pane') as HTMLElement | null
+      const backgroundElement = paneElement || reactFlowWrapper.current
+      const computedStyle = getComputedStyle(backgroundElement)
+      // Use backgroundColor which is already resolved to a usable color format (rgb/rgba)
+      const canvasBackgroundColor = computedStyle.backgroundColor || '#fff'
 
       let dataUrl: string
       try {
