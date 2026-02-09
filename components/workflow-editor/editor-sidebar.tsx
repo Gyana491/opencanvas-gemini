@@ -27,6 +27,7 @@ import {
   Download,
   Trash2,
   Share2,
+  type LucideIcon,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 
@@ -44,6 +45,8 @@ interface EditorSidebarProps {
   onDelete?: () => void
   onNew?: () => void
   isLibraryOpen?: boolean
+  categoryShortcuts?: { id: string; label: string; icon: LucideIcon }[]
+  onCategoryClick?: (categoryId: string) => void
 }
 
 export function EditorSidebar({
@@ -58,7 +61,9 @@ export function EditorSidebar({
   onImport,
   onDelete,
   onNew,
-  isLibraryOpen
+  isLibraryOpen,
+  categoryShortcuts,
+  onCategoryClick
 }: EditorSidebarProps) {
   const router = useRouter()
 
@@ -167,6 +172,29 @@ export function EditorSidebar({
           </TooltipTrigger>
           <TooltipContent side="right">Save (Cmd+S)</TooltipContent>
         </Tooltip>
+
+        {categoryShortcuts && categoryShortcuts.length > 0 && (
+          <div className="flex flex-col items-center gap-1 pt-2 mt-1 border-t border-border/60">
+            {categoryShortcuts.map((category) => {
+              const Icon = category.icon
+              return (
+                <Tooltip key={category.id}>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9"
+                      onClick={() => onCategoryClick?.(category.id)}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">{category.label}</TooltipContent>
+                </Tooltip>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )

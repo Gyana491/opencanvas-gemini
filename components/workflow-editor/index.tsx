@@ -23,7 +23,7 @@ import {
   SelectionMode,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Activity, Download, Hand, Loader2, MousePointer2, Redo2, Share2, Undo2 } from 'lucide-react'
+import { Activity, Download, Hand, Loader2, MousePointer2, Redo2, Share2, Undo2, FileText, Search, Image as ImageIcon, Boxes, Zap, Sparkles, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { toPng } from 'html-to-image'
 
@@ -43,13 +43,13 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { EditorSidebar } from './editor-sidebar'
-import { NodeLibrary } from './node-library'
+import { NodeLibrary, getNodeLibraryCategory, getNodeLibraryCategoryId, NODE_LIBRARY_CATEGORY_ORDER } from './node-library'
 import { NodeProperties } from './node-properties'
 import { workflowNodeTypes } from './node-types'
 import { useWorkflow } from './hooks/use-workflow'
 import { useUndoRedo } from './hooks/use-undo-redo'
-import { MODELS, OUTPUT_HANDLE_IDS, TOOL_OUTPUT_HANDLE_IDS } from '@/data/models'
-import { TOOLS } from '@/data/tools'
+import { MODELS, OUTPUT_HANDLE_IDS, TOOL_OUTPUT_HANDLE_IDS, type Model } from '@/data/models'
+import { TOOLS, type Tool } from '@/data/tools'
 import { PaneContextMenu } from './pane-context-menu'
 import { uploadToR2 } from '@/lib/utils/upload'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -71,6 +71,8 @@ const NODES_WITH_PROPERTIES = [
 type WorkflowNodeData = {
   label: string
 } & NodeHandleMeta & Record<string, unknown>
+
+type LibraryCategoryTarget = { id: string; token: number } | null
 
 const initialNodes: Node<WorkflowNodeData>[] = []
 const initialEdges: Edge[] = []
@@ -525,6 +527,7 @@ function WorkflowEditorInner() {
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
   const [selectedNode, setSelectedNode] = useState<any>(null)
   const [isLibraryOpen, setIsLibraryOpen] = useState(true)
+  const [libraryTargetCategory, setLibraryTargetCategory] = useState<LibraryCategoryTarget>(null)
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false)
   const [connectingSourceHandle, setConnectingSourceHandle] = useState<string | null>(null)
   const [reconnectingEdgeId, setReconnectingEdgeId] = useState<string | null>(null)
@@ -539,6 +542,34 @@ function WorkflowEditorInner() {
   const [workflowName, setWorkflowName] = useState("")
   const [isInitialGraphLoading, setIsInitialGraphLoading] = useState(true)
   const isMobile = useIsMobile()
+
+  const categoryShortcuts = React.useMemo(() => {
+    const iconMap: Record<string, LucideIcon> = {
+      'Input Nodes': FileText,
+      'Agent Tools': Search,
+      'Media Tools': ImageIcon,
+      'Utility Tools': Zap,
+      'Other Tools': Boxes,
+      'Google AI Models': Sparkles,
+      'Other Models': Sparkles,
+      'General Nodes': Boxes,
+    }
+
+    const allItems = [...(MODELS as (Model | Tool)[]), ...TOOLS]
+    const categoriesSet = new Set(allItems.map(getNodeLibraryCategory))
+    return Array.from(categoriesSet)
+      .sort((a, b) => {
+        const aIndex = NODE_LIBRARY_CATEGORY_ORDER.indexOf(a)
+        const bIndex = NODE_LIBRARY_CATEGORY_ORDER.indexOf(b)
+        if (aIndex !== bIndex) return aIndex - bIndex
+        return a.localeCompare(b)
+      })
+      .map((category) => ({
+        id: getNodeLibraryCategoryId(category),
+        label: category,
+        icon: iconMap[category] || Boxes,
+      }))
+  }, [])
 
   const { createWorkflow, loadWorkflow, saveWorkflow, renameWorkflow, deleteWorkflow, duplicateWorkflow, isLoading } = useWorkflow()
 
@@ -2559,6 +2590,11 @@ function WorkflowEditorInner() {
         onDelete={handleDelete}
         onNew={handleNew}
         isLibraryOpen={isLibraryOpen}
+        categoryShortcuts={categoryShortcuts}
+        onCategoryClick={(categoryId) => {
+          setIsLibraryOpen(true)
+          setLibraryTargetCategory({ id: categoryId, token: Date.now() })
+        }}
       />
 
       {/* Full width canvas area */}
@@ -2779,6 +2815,7 @@ function WorkflowEditorInner() {
           isOpen={isLibraryOpen}
           workflowName={workflowName}
           onRename={(newName) => handleTitleSave(newName)}
+          scrollToCategory={libraryTargetCategory}
         />
 
         {/* Right sidebar for node properties */}
