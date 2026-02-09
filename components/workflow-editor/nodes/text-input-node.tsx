@@ -47,7 +47,7 @@ export const TextInputNode = memo(({ data, selected, id }: NodeProps) => {
   return (
     <NodeContextMenu nodeId={id} type="context">
       <Card
-        className={`relative min-w-[280px] bg-card border-2 transition-all ${selected ? 'border-primary shadow-lg' : 'border-border'
+        className={`relative w-[320px] bg-card border-2 transition-all ${selected ? 'border-primary shadow-lg' : 'border-border'
           }`}
       >
         <div className="p-3">
@@ -71,7 +71,7 @@ export const TextInputNode = memo(({ data, selected, id }: NodeProps) => {
             <Textarea
               value={(data?.text as string) || ''}
               placeholder="Enter your text or prompt here..."
-              className="h-[150px] max-h-[150px] overflow-y-auto text-sm resize-none nodrag nowheel"
+              className="w-full h-[150px] max-h-[150px] overflow-y-auto text-sm resize-none nodrag nowheel"
               onChange={(e) => {
                 if (data?.onUpdateNodeData && typeof data.onUpdateNodeData === 'function') {
                   (data.onUpdateNodeData as (id: string, data: Record<string, unknown>) => void)(id, { text: e.target.value })
