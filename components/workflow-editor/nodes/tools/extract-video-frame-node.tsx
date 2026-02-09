@@ -212,6 +212,7 @@ export const ExtractVideoFrameNode = memo(({ data, selected, id }: NodeProps) =>
 
     const resolveRemoteToBlob = async () => {
       try {
+        if (controller.signal.aborted) return
         didStartFetch = true
         const response = await fetch(connectedVideo, { signal: controller.signal })
         if (!response.ok) throw new Error('Failed to fetch connected video')
@@ -220,18 +221,23 @@ export const ExtractVideoFrameNode = memo(({ data, selected, id }: NodeProps) =>
         const objectUrl = URL.createObjectURL(blob)
         resolvedVideoObjectUrlRef.current = objectUrl
         setResolvedVideoSrc(objectUrl)
-      } catch {
+      } catch (error) {
         if (cancelled) return
+        if (error instanceof DOMException && error.name === 'AbortError') return
         setResolvedVideoSrc(connectedVideo)
       }
     }
 
-    void resolveRemoteToBlob()
+    void resolveRemoteToBlob().catch((error) => {
+      if (cancelled) return
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      setResolvedVideoSrc(connectedVideo)
+    })
 
     return () => {
       cancelled = true
       if (didStartFetch && !controller.signal.aborted) {
-        controller.abort('cleanup')
+        controller.abort()
       }
     }
   }, [connectedVideoBlob, connectedVideo])

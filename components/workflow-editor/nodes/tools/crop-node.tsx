@@ -188,11 +188,20 @@ export const CropNode = memo(({ data, selected, id }: NodeProps) => {
             cropRect.height
         )
 
-        previewCtx.strokeStyle = '#e7f5a8'
+        previewCtx.save()
+        previewCtx.lineJoin = 'round'
+        previewCtx.shadowColor = 'rgba(0, 0, 0, 0.5)'
+        previewCtx.shadowBlur = 6
+        previewCtx.strokeStyle = 'rgba(0, 0, 0, 0.85)'
+        previewCtx.lineWidth = 4
+        previewCtx.strokeRect(cropRect.x, cropRect.y, cropRect.width, cropRect.height)
+        previewCtx.shadowBlur = 0
+        previewCtx.strokeStyle = '#f5ff7a'
         previewCtx.lineWidth = 2
         previewCtx.strokeRect(cropRect.x, cropRect.y, cropRect.width, cropRect.height)
+        previewCtx.restore()
 
-        previewCtx.strokeStyle = 'rgba(231, 245, 168, 0.85)'
+        previewCtx.strokeStyle = 'rgba(255, 255, 255, 0.7)'
         previewCtx.lineWidth = 1
         previewCtx.setLineDash([6, 5])
         const thirdW = cropRect.width / 3
@@ -212,12 +221,25 @@ export const CropNode = memo(({ data, selected, id }: NodeProps) => {
         }
         previewCtx.setLineDash([])
 
-        previewCtx.fillStyle = '#e7f5a8'
-        const hs = 6
-        previewCtx.fillRect(cropRect.x - hs / 2, cropRect.y - hs / 2, hs, hs)
-        previewCtx.fillRect(cropRect.x + cropRect.width - hs / 2, cropRect.y - hs / 2, hs, hs)
-        previewCtx.fillRect(cropRect.x - hs / 2, cropRect.y + cropRect.height - hs / 2, hs, hs)
-        previewCtx.fillRect(cropRect.x + cropRect.width - hs / 2, cropRect.y + cropRect.height - hs / 2, hs, hs)
+        const hs = 10
+        const half = hs / 2
+        const handlePositions = [
+            { x: cropRect.x, y: cropRect.y },
+            { x: cropRect.x + cropRect.width, y: cropRect.y },
+            { x: cropRect.x, y: cropRect.y + cropRect.height },
+            { x: cropRect.x + cropRect.width, y: cropRect.y + cropRect.height },
+            { x: cropRect.x + cropRect.width / 2, y: cropRect.y },
+            { x: cropRect.x + cropRect.width / 2, y: cropRect.y + cropRect.height },
+            { x: cropRect.x, y: cropRect.y + cropRect.height / 2 },
+            { x: cropRect.x + cropRect.width, y: cropRect.y + cropRect.height / 2 },
+        ]
+        previewCtx.fillStyle = '#ffffff'
+        previewCtx.strokeStyle = 'rgba(0, 0, 0, 0.75)'
+        previewCtx.lineWidth = 1
+        handlePositions.forEach((pos) => {
+            previewCtx.fillRect(pos.x - half, pos.y - half, hs, hs)
+            previewCtx.strokeRect(pos.x - half, pos.y - half, hs, hs)
+        })
 
         if (processingCanvas.width !== cropRect.width) processingCanvas.width = cropRect.width
         if (processingCanvas.height !== cropRect.height) processingCanvas.height = cropRect.height
