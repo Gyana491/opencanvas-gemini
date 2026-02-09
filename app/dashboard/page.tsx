@@ -19,7 +19,8 @@ import {
   Loader2,
   Package,
   Download,
-  Share2
+  Share2,
+  RefreshCw
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -244,6 +245,16 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between sm:justify-end gap-2 w-full md:w-auto">
           <p className="text-sm text-muted-foreground md:hidden">View mode:</p>
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fetchWorkflows()}
+              disabled={isLoading}
+              className="border"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
             <Button
               variant={viewMode === 'list' ? 'secondary' : 'ghost'}
               size="icon"
