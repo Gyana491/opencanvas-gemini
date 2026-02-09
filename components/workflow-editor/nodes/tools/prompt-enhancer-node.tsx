@@ -2,7 +2,7 @@
 
 import { memo, useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { Handle, Position, type NodeProps, useEdges, useReactFlow } from '@xyflow/react'
+import { Handle, Position, type NodeProps, useEdges, useReactFlow, useUpdateNodeInternals } from '@xyflow/react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -89,6 +89,7 @@ export const PromptEnhancerNode = memo(({ data, selected, id }: NodeProps) => {
     const workflowId = params?.id as string
     const edges = useEdges()
     const { getNodes, updateNodeData } = useReactFlow()
+    const updateNodeInternals = useUpdateNodeInternals()
 
     const [isRunning, setIsRunning] = useState(false)
     const [error, setError] = useState('')
@@ -107,6 +108,11 @@ export const PromptEnhancerNode = memo(({ data, selected, id }: NodeProps) => {
             setOutput(getStringField(data?.output).trim())
         }
     }, [data?.output, isRunning])
+
+    // Notify React Flow when the number of image input handles changes
+    useEffect(() => {
+        updateNodeInternals(id)
+    }, [id, imageInputCount, updateNodeInternals])
 
     const getFreshConnectedPrompt = () => {
         const nodes = getNodes()
