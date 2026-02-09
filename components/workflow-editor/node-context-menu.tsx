@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useMemo } from "react"
+import type { CSSProperties } from "react"
 import { useReactFlow, type Node } from "@xyflow/react"
 import { Check, Copy, FolderPlus, Trash2, Files, Download } from "lucide-react"
 import { toast } from "sonner"
@@ -49,9 +50,18 @@ type FlowNodeLike = {
     width?: number
     height?: number
     measured?: { width?: number; height?: number }
-    style?: { width?: number; height?: number }
+    style?: CSSProperties
     data?: Record<string, unknown>
     selected?: boolean
+}
+
+const resolveDimension = (value: unknown): number | undefined => {
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+    if (typeof value === 'string') {
+        const parsed = Number.parseFloat(value)
+        return Number.isFinite(parsed) ? parsed : undefined
+    }
+    return undefined
 }
 
 function getNodeDimension(node: FlowNodeLike, axis: 'width' | 'height'): number {
@@ -60,9 +70,9 @@ function getNodeDimension(node: FlowNodeLike, axis: 'width' | 'height'): number 
         return Math.max(
             1,
             Math.round(
-                (typeof node?.style?.width === 'number' ? node.style.width : undefined) ??
-                (typeof node?.width === 'number' ? node.width : undefined) ??
-                (typeof measured?.width === 'number' ? measured.width : undefined) ??
+                resolveDimension(node?.style?.width) ??
+                resolveDimension(node?.width) ??
+                resolveDimension(measured?.width) ??
                 320
             )
         )
@@ -71,9 +81,9 @@ function getNodeDimension(node: FlowNodeLike, axis: 'width' | 'height'): number 
     return Math.max(
         1,
         Math.round(
-            (typeof node?.style?.height === 'number' ? node.style.height : undefined) ??
-            (typeof node?.height === 'number' ? node.height : undefined) ??
-            (typeof measured?.height === 'number' ? measured.height : undefined) ??
+            resolveDimension(node?.style?.height) ??
+            resolveDimension(node?.height) ??
+            resolveDimension(measured?.height) ??
             180
         )
     )
