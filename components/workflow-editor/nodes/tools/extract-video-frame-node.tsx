@@ -222,14 +222,14 @@ export const ExtractVideoFrameNode = memo(({ data, selected, id }: NodeProps) =>
         resolvedVideoObjectUrlRef.current = objectUrl
         setResolvedVideoSrc(objectUrl)
       } catch (error) {
-        if (cancelled) return
+        if (cancelled || controller.signal.aborted) return
         if (error instanceof DOMException && error.name === 'AbortError') return
         setResolvedVideoSrc(connectedVideo)
       }
     }
 
     void resolveRemoteToBlob().catch((error) => {
-      if (cancelled) return
+      if (cancelled || controller.signal.aborted) return
       if (error instanceof DOMException && error.name === 'AbortError') return
       setResolvedVideoSrc(connectedVideo)
     })
@@ -237,7 +237,11 @@ export const ExtractVideoFrameNode = memo(({ data, selected, id }: NodeProps) =>
     return () => {
       cancelled = true
       if (didStartFetch && !controller.signal.aborted) {
-        controller.abort()
+        try {
+          controller.abort()
+        } catch {
+          // Ignore abort errors in browsers that throw during cleanup.
+        }
       }
     }
   }, [connectedVideoBlob, connectedVideo])
