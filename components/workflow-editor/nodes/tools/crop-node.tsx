@@ -736,7 +736,7 @@ export const CropNode = memo(({ data, selected, id }: NodeProps) => {
                             onPointerDown={handlePointerDown}
                             onPointerMove={handleCanvasPointerMove}
                             onPointerLeave={handleCanvasPointerLeave}
-                            className={`${connectedImage ? '' : 'hidden'} max-w-full max-h-full touch-none`}
+                            className={`${connectedImage ? '' : 'hidden'} w-full h-full object-contain touch-none`}
                         />
                         {!connectedImage && (
                             <div className="text-xs text-muted-foreground text-center p-4">

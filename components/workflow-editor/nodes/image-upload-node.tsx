@@ -96,7 +96,7 @@ export const ImageNode = memo(({ data, selected, id }: NodeProps) => {
   return (
     <NodeContextMenu nodeId={id} type="context">
       <Card
-        className={`relative min-w-[280px] bg-card border-2 transition-all group ${selected ? 'border-primary shadow-lg' : 'border-border'
+        className={`relative min-w-[320px] bg-card border-2 transition-all group ${selected ? 'border-primary shadow-lg' : 'border-border'
           }`}
       >
         <div className="p-3 space-y-3">
@@ -121,7 +121,7 @@ export const ImageNode = memo(({ data, selected, id }: NodeProps) => {
             {/* Image Input */}
             <div className="relative">
               {isUploading ? (
-                <div className="h-40 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border rounded-md bg-muted/20">
+                <div className="h-56 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border rounded-md bg-muted/20">
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                   <span className="text-xs text-muted-foreground">Uploading image...</span>
                 </div>
@@ -133,7 +133,7 @@ export const ImageNode = memo(({ data, selected, id }: NodeProps) => {
                     loading="lazy"
                     decoding="async"
                     crossOrigin="anonymous"
-                    className="w-full h-40 object-cover rounded-md border border-border"
+                    className="w-full h-56 object-contain rounded-md border border-border"
                   />
                   <Button
                     variant="destructive"
@@ -146,7 +146,7 @@ export const ImageNode = memo(({ data, selected, id }: NodeProps) => {
                 </div>
               ) : (
                 <div
-                  className="h-40 border-2 border-dashed border-border rounded-md flex flex-col items-center justify-center cursor-pointer hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all nodrag"
+                  className="h-56 border-2 border-dashed border-border rounded-md flex flex-col items-center justify-center cursor-pointer hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all nodrag"
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center mb-2">

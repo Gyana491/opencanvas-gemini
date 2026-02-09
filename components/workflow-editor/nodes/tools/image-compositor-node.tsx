@@ -793,7 +793,7 @@ export const ImageCompositorNode = memo(({ data, selected, id }: NodeProps) => {
 
           <div className="relative aspect-square w-full rounded-md border border-border overflow-hidden bg-muted/20">
             {output ? (
-              <img src={output} alt="Image editor output" className="w-full h-full object-cover" />
+              <img src={output} alt="Image editor output" className="w-full h-full object-contain" />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
                 Connect image layers and click Edit
@@ -951,7 +951,7 @@ export const ImageCompositorNode = memo(({ data, selected, id }: NodeProps) => {
                 <div className="w-full h-full overflow-auto flex items-center justify-center">
                   <canvas
                     ref={editorCanvasRef}
-                    className="max-w-full max-h-full border border-border/60 rounded-md touch-none bg-[#2d2f38]"
+                    className="w-full h-full object-contain border border-border/60 rounded-md touch-none bg-[#2d2f38]"
                     style={{ cursor: canvasCursor }}
                     onPointerDown={handleEditorPointerDown}
                     onPointerMove={handleEditorPointerMove}

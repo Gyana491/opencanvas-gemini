@@ -167,7 +167,7 @@ export const VideoNode = memo(({ data, selected, id }: NodeProps) => {
                   <video
                     src={preview}
                     controls
-                    className="w-full h-40 object-cover rounded-md border border-border bg-black"
+                    className="w-full h-40 object-contain rounded-md border border-border bg-black"
                     onLoadedMetadata={(event) => {
                       const video = event.currentTarget
                       const duration = Number.isFinite(video.duration) ? video.duration : 0

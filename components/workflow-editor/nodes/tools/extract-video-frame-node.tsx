@@ -191,8 +191,6 @@ export const ExtractVideoFrameNode = memo(({ data, selected, id }: NodeProps) =>
 
   useEffect(() => {
     let cancelled = false
-    const controller = new AbortController()
-    let didStartFetch = false
 
     if (resolvedVideoObjectUrlRef.current) {
       URL.revokeObjectURL(resolvedVideoObjectUrlRef.current)
@@ -212,9 +210,8 @@ export const ExtractVideoFrameNode = memo(({ data, selected, id }: NodeProps) =>
 
     const resolveRemoteToBlob = async () => {
       try {
-        if (controller.signal.aborted) return
-        didStartFetch = true
-        const response = await fetch(connectedVideo, { signal: controller.signal })
+        if (cancelled) return
+        const response = await fetch(connectedVideo)
         if (!response.ok) throw new Error('Failed to fetch connected video')
         const blob = await response.blob()
         if (cancelled) return
@@ -222,27 +219,21 @@ export const ExtractVideoFrameNode = memo(({ data, selected, id }: NodeProps) =>
         resolvedVideoObjectUrlRef.current = objectUrl
         setResolvedVideoSrc(objectUrl)
       } catch (error) {
-        if (cancelled || controller.signal.aborted) return
+        if (cancelled) return
         if (error instanceof DOMException && error.name === 'AbortError') return
         setResolvedVideoSrc(connectedVideo)
       }
     }
 
     void resolveRemoteToBlob().catch((error) => {
-      if (cancelled || controller.signal.aborted) return
+      if (cancelled) return
       if (error instanceof DOMException && error.name === 'AbortError') return
       setResolvedVideoSrc(connectedVideo)
     })
 
     return () => {
       cancelled = true
-      if (didStartFetch && !controller.signal.aborted) {
-        try {
-          controller.abort()
-        } catch {
-          // Ignore abort errors in browsers that throw during cleanup.
-        }
-      }
+      cancelled = true
     }
   }, [connectedVideoBlob, connectedVideo])
 
@@ -323,7 +314,7 @@ export const ExtractVideoFrameNode = memo(({ data, selected, id }: NodeProps) =>
               <img
                 src={output}
                 alt="Extracted frame"
-                className="w-full h-[220px] object-cover"
+                className="w-full h-[220px] object-contain"
               />
             ) : (
               <div className="w-full h-[220px] flex items-center justify-center text-xs text-muted-foreground">
