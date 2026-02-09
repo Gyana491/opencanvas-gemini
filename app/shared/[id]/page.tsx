@@ -25,8 +25,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     const title = `${workflow.name} - OpenCanvas`
     const description = `View and duplicate this shared workflow: ${workflow.name}`
 
-    // Use thumbnail if available, otherwise use default og image
-    const ogImage = workflow.thumbnail || "/og-image.png"
+    // Use thumbnail if available, otherwise use logo as fallback
+    const ogImage = workflow.thumbnail || "/logo.png"
 
     return {
       title,
