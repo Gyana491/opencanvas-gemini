@@ -438,6 +438,81 @@ function getAbsoluteNodePosition(
   return { x, y }
 }
 
+function getNodeDimensionWithStyle(node: Node<WorkflowNodeData>, axis: 'width' | 'height'): number {
+  const styleValue = node.style && typeof node.style === 'object'
+    ? (node.style as Record<string, unknown>)[axis]
+    : undefined
+  if (typeof styleValue === 'number' && Number.isFinite(styleValue)) {
+    return Math.max(1, Math.round(styleValue))
+  }
+
+  return getNodeDimension(node, axis)
+}
+
+function getNodeDepth(node: Node<WorkflowNodeData>, nodeMap: Map<string, Node<WorkflowNodeData>>): number {
+  let depth = 0
+  let parentId = node.parentId
+  while (parentId) {
+    const parent = nodeMap.get(parentId)
+    if (!parent) break
+    depth += 1
+    parentId = parent.parentId
+  }
+  return depth
+}
+
+function findContainingGroup(
+  position: { x: number; y: number },
+  nodes: Node<WorkflowNodeData>[]
+): Node<WorkflowNodeData> | null {
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]))
+  const groupCandidates = nodes
+    .filter((node) => node.type === GROUP_NODE_TYPE)
+    .map((group) => {
+      const absolute = getAbsoluteNodePosition(group, nodeMap)
+      const width = getNodeDimensionWithStyle(group, 'width')
+      const height = getNodeDimensionWithStyle(group, 'height')
+      const contains =
+        position.x >= absolute.x &&
+        position.x <= absolute.x + width &&
+        position.y >= absolute.y &&
+        position.y <= absolute.y + height
+      if (!contains) {
+        return null
+      }
+      const depth = getNodeDepth(group, nodeMap)
+      const area = width * height
+      return { group, depth, area }
+    })
+    .filter((entry): entry is { group: Node<WorkflowNodeData>; depth: number; area: number } => Boolean(entry))
+
+  if (groupCandidates.length === 0) {
+    return null
+  }
+
+  groupCandidates.sort((a, b) => {
+    if (a.depth !== b.depth) return b.depth - a.depth
+    return a.area - b.area
+  })
+
+  return groupCandidates[0].group
+}
+
+function isDescendantOf(
+  candidate: Node<WorkflowNodeData>,
+  ancestorId: string,
+  nodeMap: Map<string, Node<WorkflowNodeData>>
+): boolean {
+  let parentId = candidate.parentId
+  while (parentId) {
+    if (parentId === ancestorId) return true
+    const parent = nodeMap.get(parentId)
+    if (!parent) break
+    parentId = parent.parentId
+  }
+  return false
+}
+
 function WorkflowEditorInner() {
   const params = useParams()
   const router = useRouter()
@@ -1355,20 +1430,35 @@ function WorkflowEditorInner() {
         }
 
         const basePosition = screenToFlowPosition({ x: dropX, y: dropY })
+        const baseNodeMap = new Map(nodes.map((node) => [node.id, node]))
         for (let index = 0; index < mediaFiles.length; index += 1) {
           const file = mediaFiles[index]
           const isVideo = file.type.startsWith('video/')
           const localVideoBlobUrl = isVideo ? URL.createObjectURL(file) : ''
           const nodeType = isVideo ? 'videoUpload' : 'imageUpload'
           const nodeId = `${nodeType}-${Date.now()}-${index}`
+          const absolutePosition = {
+            x: basePosition.x + index * 36,
+            y: basePosition.y + index * 28,
+          }
+          const targetGroup = findContainingGroup(absolutePosition, nodes)
+          const groupAbsolute = targetGroup ? getAbsoluteNodePosition(targetGroup, baseNodeMap) : null
+          const nodePosition = targetGroup && groupAbsolute
+            ? {
+              x: Math.round(absolutePosition.x - groupAbsolute.x),
+              y: Math.round(absolutePosition.y - groupAbsolute.y),
+            }
+            : absolutePosition
 
           const newNode = {
             id: nodeId,
             type: nodeType,
             position: {
-              x: basePosition.x + index * 36,
-              y: basePosition.y + index * 28,
+              x: nodePosition.x,
+              y: nodePosition.y,
             },
+            parentId: targetGroup?.id,
+            extent: targetGroup ? ('parent' as const) : undefined,
             data: normalizeNodeHandleData(nodeType, {
               label: isVideo ? 'Video Upload' : 'Image Upload',
               ...(isVideo
@@ -1443,12 +1533,23 @@ function WorkflowEditorInner() {
         x: dropX,
         y: dropY,
       })
+      const dropTargetGroup = findContainingGroup(position, nodes)
+      const dropNodeMap = new Map(nodes.map((node) => [node.id, node]))
+      const dropGroupAbsolute = dropTargetGroup ? getAbsoluteNodePosition(dropTargetGroup, dropNodeMap) : null
+      const finalPosition = dropTargetGroup && dropGroupAbsolute
+        ? {
+          x: Math.round(position.x - dropGroupAbsolute.x),
+          y: Math.round(position.y - dropGroupAbsolute.y),
+        }
+        : position
 
       const model = MODELS.find(m => m.id === nodeType) || TOOLS.find(t => t.id === nodeType);
       const newNode = {
         id: `${nodeType}-${Date.now()}`,
         type: nodeType,
-        position,
+        position: finalPosition,
+        parentId: dropTargetGroup?.id,
+        extent: dropTargetGroup ? ('parent' as const) : undefined,
         data: normalizeNodeHandleData(nodeType, {
           label: model?.title || nodeType,
           ...(nodeType === 'imagen-4.0-generate-001' && {
@@ -1584,6 +1685,78 @@ function WorkflowEditorInner() {
     setSelectedNode(null)
     setIsRightSidebarOpen(false)
   }, [])
+
+  const onNodeDragStop = useCallback((_: React.MouseEvent, draggedNode: Node<WorkflowNodeData>) => {
+    if (draggedNode.type === GROUP_NODE_TYPE) {
+      return
+    }
+
+    const currentNodes = getNodes() as Node<WorkflowNodeData>[]
+    const nodeMap = new Map(currentNodes.map((node) => [node.id, node]))
+    const dragged = nodeMap.get(draggedNode.id)
+    if (!dragged) return
+
+    const draggedAbsolute = getAbsoluteNodePosition(dragged, nodeMap)
+    const targetGroup = findContainingGroup(draggedAbsolute, currentNodes)
+
+    if (targetGroup && isDescendantOf(targetGroup, dragged.id, nodeMap)) {
+      return
+    }
+
+    setNodes((nodesState) => {
+      const stateMap = new Map(nodesState.map((node) => [node.id, node]))
+      const selectedNodes = nodesState.filter((node) => node.selected)
+      const candidates = selectedNodes.length > 0 ? selectedNodes : [dragged]
+
+      const resolvedTargetGroup = targetGroup
+        ? stateMap.get(targetGroup.id) || targetGroup
+        : null
+      const resolvedGroupAbsolute = resolvedTargetGroup
+        ? getAbsoluteNodePosition(resolvedTargetGroup, stateMap)
+        : null
+
+      const updated = nodesState.map((node) => {
+        if (!candidates.find((candidate) => candidate.id === node.id)) {
+          return node
+        }
+
+        const nodeAbsolute = getAbsoluteNodePosition(node, stateMap)
+        if (resolvedTargetGroup) {
+          if (node.parentId === resolvedTargetGroup.id) {
+            return node
+          }
+          if (isDescendantOf(resolvedTargetGroup, node.id, stateMap)) {
+            return node
+          }
+          return {
+            ...node,
+            parentId: resolvedTargetGroup.id,
+            extent: 'parent' as const,
+            position: {
+              x: Math.round(nodeAbsolute.x - (resolvedGroupAbsolute?.x ?? 0)),
+              y: Math.round(nodeAbsolute.y - (resolvedGroupAbsolute?.y ?? 0)),
+            },
+          }
+        }
+
+        if (node.parentId) {
+          return {
+            ...node,
+            parentId: undefined,
+            extent: undefined,
+            position: {
+              x: Math.round(nodeAbsolute.x),
+              y: Math.round(nodeAbsolute.y),
+            },
+          }
+        }
+
+        return node
+      })
+
+      return updated
+    })
+  }, [getNodes, setNodes])
 
   const selectedGroupableNodes = React.useMemo(
     () => nodes.filter((node) => node.selected && node.type !== GROUP_NODE_TYPE),
@@ -1897,13 +2070,36 @@ function WorkflowEditorInner() {
 
   const addNode = useCallback((nodeType: string) => {
     const model = MODELS.find(m => m.id === nodeType) || TOOLS.find(t => t.id === nodeType);
+    const selectedGroups = nodes.filter((node) => node.selected && node.type === GROUP_NODE_TYPE)
+    const targetGroup = selectedGroups.length === 1 ? selectedGroups[0] : null
+    const defaultWidth = 320
+    const defaultHeight = 180
+    const groupPadding = 24
+    const groupWidth = targetGroup ? getNodeDimensionWithStyle(targetGroup, 'width') : 0
+    const groupHeight = targetGroup ? getNodeDimensionWithStyle(targetGroup, 'height') : 0
+    const maxX = Math.max(groupPadding, groupWidth - groupPadding - defaultWidth)
+    const maxY = Math.max(groupPadding, groupHeight - groupPadding - defaultHeight)
+    const relativeX = targetGroup
+      ? Math.round(maxX <= groupPadding ? groupPadding : groupPadding + Math.random() * (maxX - groupPadding))
+      : 0
+    const relativeY = targetGroup
+      ? Math.round(maxY <= groupPadding ? groupPadding : groupPadding + Math.random() * (maxY - groupPadding))
+      : 0
+    const position = targetGroup
+      ? {
+        x: relativeX,
+        y: relativeY,
+      }
+      : {
+        x: Math.random() * 400 + 100,
+        y: Math.random() * 400 + 100,
+      }
     const newNode = {
       id: `${nodeType}-${Date.now()}`,
       type: nodeType,
-      position: {
-        x: Math.random() * 400 + 100,
-        y: Math.random() * 400 + 100
-      },
+      position,
+      parentId: targetGroup?.id,
+      extent: targetGroup ? ('parent' as const) : undefined,
       data: normalizeNodeHandleData(nodeType, {
         label: model?.title || nodeType,
         ...(nodeType === 'imagen-4.0-generate-001' && {
@@ -2441,6 +2637,7 @@ function WorkflowEditorInner() {
               onReconnectStart={onReconnectStart}
               onReconnectEnd={onReconnectEnd}
               onNodeClick={onNodeClick}
+              onNodeDragStop={onNodeDragStop}
               onEdgeContextMenu={(event, edge) => {
                 event.preventDefault()
                 setEdgeContextMenu({

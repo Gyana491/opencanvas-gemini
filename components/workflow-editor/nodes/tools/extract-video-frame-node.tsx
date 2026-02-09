@@ -192,6 +192,7 @@ export const ExtractVideoFrameNode = memo(({ data, selected, id }: NodeProps) =>
   useEffect(() => {
     let cancelled = false
     const controller = new AbortController()
+    let didStartFetch = false
 
     if (resolvedVideoObjectUrlRef.current) {
       URL.revokeObjectURL(resolvedVideoObjectUrlRef.current)
@@ -201,20 +202,17 @@ export const ExtractVideoFrameNode = memo(({ data, selected, id }: NodeProps) =>
     const blobCandidate = connectedVideoBlob || (connectedVideo.startsWith('blob:') ? connectedVideo : '')
     if (blobCandidate) {
       setResolvedVideoSrc(blobCandidate)
-      return () => {
-        controller.abort()
-      }
+      return
     }
 
     if (!connectedVideo) {
       setResolvedVideoSrc('')
-      return () => {
-        controller.abort()
-      }
+      return
     }
 
     const resolveRemoteToBlob = async () => {
       try {
+        didStartFetch = true
         const response = await fetch(connectedVideo, { signal: controller.signal })
         if (!response.ok) throw new Error('Failed to fetch connected video')
         const blob = await response.blob()
@@ -232,7 +230,9 @@ export const ExtractVideoFrameNode = memo(({ data, selected, id }: NodeProps) =>
 
     return () => {
       cancelled = true
-      controller.abort()
+      if (didStartFetch && !controller.signal.aborted) {
+        controller.abort('cleanup')
+      }
     }
   }, [connectedVideoBlob, connectedVideo])
 

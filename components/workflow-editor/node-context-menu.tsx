@@ -49,6 +49,7 @@ type FlowNodeLike = {
     width?: number
     height?: number
     measured?: { width?: number; height?: number }
+    style?: { width?: number; height?: number }
     data?: Record<string, unknown>
     selected?: boolean
 }
@@ -59,6 +60,7 @@ function getNodeDimension(node: FlowNodeLike, axis: 'width' | 'height'): number 
         return Math.max(
             1,
             Math.round(
+                (typeof node?.style?.width === 'number' ? node.style.width : undefined) ??
                 (typeof node?.width === 'number' ? node.width : undefined) ??
                 (typeof measured?.width === 'number' ? measured.width : undefined) ??
                 320
@@ -69,6 +71,7 @@ function getNodeDimension(node: FlowNodeLike, axis: 'width' | 'height'): number 
     return Math.max(
         1,
         Math.round(
+            (typeof node?.style?.height === 'number' ? node.style.height : undefined) ??
             (typeof node?.height === 'number' ? node.height : undefined) ??
             (typeof measured?.height === 'number' ? measured.height : undefined) ??
             180
@@ -126,11 +129,11 @@ function checkCollision(
     height: number,
     existingNodes: FlowNodeLike[],
     nodeMap: Map<string, FlowNodeLike>,
-    excludeIds: Set<string>
+    ignoreIds: Set<string>
 ): boolean {
     const padding = 20 // Small gap between nodes
     return existingNodes.some(node => {
-        if (excludeIds.has(node.id)) return false
+        if (ignoreIds.has(node.id)) return false
 
         const abs = getAbsoluteNodePosition(node, nodeMap)
         const nodeWidth = getNodeDimension(node, 'width')
@@ -151,11 +154,34 @@ function findNonOverlappingOffset(
     originalBounds: { minX: number; minY: number; maxX: number; maxY: number; width: number; height: number },
     existingNodes: FlowNodeLike[],
     nodeMap: Map<string, FlowNodeLike>,
-    excludeIds: Set<string>
+    boundsConstraint?: { minX: number; minY: number; maxX: number; maxY: number },
+    ignoreIds: Set<string> = new Set()
 ): { x: number; y: number } {
-    const gap = 40 // Gap between original and duplicate
-    const nodeWidth = Math.max(originalBounds.width, 320)
-    const nodeHeight = Math.max(originalBounds.height, 180)
+    const gap = 16 // Gap between original and duplicate
+    const nodeWidth = Math.max(1, originalBounds.width)
+    const nodeHeight = Math.max(1, originalBounds.height)
+    const boundsPadding = 12
+
+    const fitsBounds = (position: { x: number; y: number }) => {
+        if (!boundsConstraint) return true
+        return (
+            position.x >= boundsConstraint.minX + boundsPadding &&
+            position.y >= boundsConstraint.minY + boundsPadding &&
+            position.x + nodeWidth <= boundsConstraint.maxX - boundsPadding &&
+            position.y + nodeHeight <= boundsConstraint.maxY - boundsPadding
+        )
+    }
+
+    const isValidPosition = (position: { x: number; y: number }) =>
+        fitsBounds(position) &&
+        !checkCollision(
+            position,
+            nodeWidth,
+            nodeHeight,
+            existingNodes,
+            nodeMap,
+            ignoreIds
+        )
 
     // Try positions in order: right, bottom, left, top, then diagonals
     const baseOffsets = [
@@ -175,20 +201,54 @@ function findNonOverlappingOffset(
             y: originalBounds.minY + offset.y,
         }
 
-        if (!checkCollision(
-            testPosition,
-            nodeWidth,
-            nodeHeight,
-            existingNodes,
-            nodeMap,
-            excludeIds
-        )) {
+        if (isValidPosition(testPosition)) {
             return offset
         }
     }
 
-    // If all base positions are blocked, try incrementing the right offset
-    // This handles the case of many duplicates stacking up
+    const step = Math.max(16, Math.round(Math.min(nodeWidth, nodeHeight) / 6))
+    const maxRadius = 20
+
+    for (let radius = 1; radius <= maxRadius; radius += 1) {
+        for (let dx = -radius; dx <= radius; dx += 1) {
+            for (let dy = -radius; dy <= radius; dy += 1) {
+                if (Math.abs(dx) !== radius && Math.abs(dy) !== radius) continue
+
+                const testOffset = { x: dx * step, y: dy * step }
+                const testPosition = {
+                    x: originalBounds.minX + testOffset.x,
+                    y: originalBounds.minY + testOffset.y,
+                }
+
+                if (isValidPosition(testPosition)) {
+                    return testOffset
+                }
+            }
+        }
+    }
+
+    if (boundsConstraint) {
+        let bestOffset: { x: number; y: number } | null = null
+        let bestDistance = Number.POSITIVE_INFINITY
+
+        for (let x = boundsConstraint.minX + boundsPadding; x <= boundsConstraint.maxX - nodeWidth - boundsPadding; x += step) {
+            for (let y = boundsConstraint.minY + boundsPadding; y <= boundsConstraint.maxY - nodeHeight - boundsPadding; y += step) {
+                const testPosition = { x, y }
+                if (!isValidPosition(testPosition)) continue
+
+                const dx = x - originalBounds.minX
+                const dy = y - originalBounds.minY
+                const distance = Math.hypot(dx, dy)
+                if (distance < bestDistance) {
+                    bestDistance = distance
+                    bestOffset = { x: dx, y: dy }
+                }
+            }
+        }
+
+        if (bestOffset) return bestOffset
+    }
+
     for (let multiplier = 2; multiplier <= 10; multiplier++) {
         const testOffset = { x: (nodeWidth + gap) * multiplier, y: 0 }
         const testPosition = {
@@ -196,20 +256,12 @@ function findNonOverlappingOffset(
             y: originalBounds.minY + testOffset.y,
         }
 
-        if (!checkCollision(
-            testPosition,
-            nodeWidth,
-            nodeHeight,
-            existingNodes,
-            nodeMap,
-            excludeIds
-        )) {
+        if (isValidPosition(testPosition)) {
             return testOffset
         }
     }
 
-    // Ultimate fallback: place far to the right
-    return { x: (nodeWidth + gap) * 11, y: 0 }
+    return { x: nodeWidth + gap, y: 0 }
 }
 
 export function NodeContextMenu({
@@ -388,7 +440,20 @@ export function NodeContextMenu({
         const nodeMap = new Map(allNodes.map(n => [n.id, n]))
         const topLevelNodes = nodesToDuplicate.filter(n => !n.parentId || !duplicatedNodeIds.has(n.parentId))
         const originalBounds = getNodesBoundingBox(topLevelNodes, nodeMap)
-        const offset = findNonOverlappingOffset(originalBounds, allNodes, nodeMap, duplicatedNodeIds)
+        const sharedParentId = topLevelNodes.length > 0 && topLevelNodes.every((n) => n.parentId === topLevelNodes[0].parentId)
+            ? topLevelNodes[0].parentId
+            : undefined
+        const sharedParent = sharedParentId ? nodeMap.get(sharedParentId) : undefined
+        const parentBounds = sharedParent && sharedParent.type === GROUP_NODE_TYPE
+            ? (() => {
+                const abs = getAbsoluteNodePosition(sharedParent, nodeMap)
+                const width = getNodeDimension(sharedParent, 'width')
+                const height = getNodeDimension(sharedParent, 'height')
+                return { minX: abs.x, minY: abs.y, maxX: abs.x + width, maxY: abs.y + height }
+            })()
+            : undefined
+        const ignoreIds = sharedParentId ? new Set([sharedParentId]) : new Set<string>()
+        const offset = findNonOverlappingOffset(originalBounds, allNodes, nodeMap, parentBounds, ignoreIds)
 
         // Duplicate nodes with updated IDs and positions
         const duplicatedNodes: Node<Record<string, unknown>>[] = nodesToDuplicate.map((node) => {
@@ -407,8 +472,8 @@ export function NodeContextMenu({
                 }
             }
 
-            // Apply offset only to top-level nodes (not children in groups)
-            const isTopLevel = !mappedParentId
+            // Apply offset to nodes whose parents are not duplicated
+            const isTopLevel = !node.parentId || !duplicatedNodeIds.has(node.parentId)
             return {
                 ...node,
                 type: node.type || 'textInput',
@@ -419,7 +484,7 @@ export function NodeContextMenu({
                     y: node.position.y + (isTopLevel ? offset.y : 0),
                 },
                 parentId: mappedParentId,
-                selected: !mappedParentId, // Only select top-level duplicated nodes
+                selected: isTopLevel, // Only select top-level duplicated nodes
             }
         })
 

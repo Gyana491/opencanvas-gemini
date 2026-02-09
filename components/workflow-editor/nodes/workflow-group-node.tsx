@@ -1,7 +1,7 @@
 "use client"
 
 import { memo, useState, useCallback, useRef } from 'react'
-import { type NodeProps, useReactFlow } from '@xyflow/react'
+import { type NodeProps, useReactFlow, useUpdateNodeInternals } from '@xyflow/react'
 import { Input } from '@/components/ui/input'
 import { NodeContextMenu } from '../node-context-menu'
 
@@ -14,6 +14,7 @@ type ResizeDirection = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw' | null
 
 export const WorkflowGroupNode = memo(({ data, id, selected, ...props }: NodeProps) => {
   const { updateNodeData, getNode, setNodes } = useReactFlow()
+  const updateNodeInternals = useUpdateNodeInternals()
   const node = getNode(id)
   const titleFromData =
     typeof data?.title === 'string' && data.title.trim().length > 0
@@ -130,6 +131,8 @@ export const WorkflowGroupNode = memo(({ data, id, selected, ...props }: NodePro
             ? {
               ...n,
               position: { x: newPosX, y: newPosY },
+              width: Math.round(newWidth),
+              height: Math.round(newHeight),
               style: {
                 ...n.style,
                 width: Math.round(newWidth),
@@ -144,6 +147,7 @@ export const WorkflowGroupNode = memo(({ data, id, selected, ...props }: NodePro
     const handlePointerUp = () => {
       resizeRef.current = null
       setIsResizing(false)
+      updateNodeInternals(id)
       document.removeEventListener('pointermove', handlePointerMove)
       document.removeEventListener('pointerup', handlePointerUp)
     }
