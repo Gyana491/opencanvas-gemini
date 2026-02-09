@@ -463,7 +463,7 @@ function SharedWorkflowInner() {
           proOptions={{ hideAttribution: true }}
         >
           <Background />
-          <Controls position="bottom-center" />
+          <Controls position="bottom-center" showInteractive={false} />
         </ReactFlow>
       </div>
       <style jsx global>{`
