@@ -39,7 +39,7 @@ export async function GET(
   try {
     const workflow = await prisma.workflow.findUnique({
       where: { id: params.id },
-      select: { id: true, name: true, data: true, isShared: true },
+      select: { id: true, name: true, data: true, isShared: true, thumbnail: true },
     });
 
     if (!workflow) {
@@ -58,6 +58,7 @@ export async function GET(
     return NextResponse.json({
       id: workflow.id,
       name: workflow.name,
+      thumbnail: workflow.thumbnail,
       access: "view",
       data: graph,
     });
