@@ -92,6 +92,126 @@ function getAbsoluteNodePosition(node: FlowNodeLike, nodeMap: Map<string, FlowNo
     return { x, y }
 }
 
+// Calculate dimensions of a set of nodes (bounding box)
+function getNodesBoundingBox(
+    nodes: FlowNodeLike[],
+    nodeMap: Map<string, FlowNodeLike>
+): { minX: number; minY: number; maxX: number; maxY: number; width: number; height: number } {
+    if (nodes.length === 0) {
+        return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0 }
+    }
+
+    const positions = nodes.map(node => {
+        const abs = getAbsoluteNodePosition(node, nodeMap)
+        return {
+            x: abs.x,
+            y: abs.y,
+            width: getNodeDimension(node, 'width'),
+            height: getNodeDimension(node, 'height'),
+        }
+    })
+
+    const minX = Math.min(...positions.map(p => p.x))
+    const minY = Math.min(...positions.map(p => p.y))
+    const maxX = Math.max(...positions.map(p => p.x + p.width))
+    const maxY = Math.max(...positions.map(p => p.y + p.height))
+
+    return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY }
+}
+
+// Check if a position overlaps with any existing nodes
+function checkCollision(
+    position: { x: number; y: number },
+    width: number,
+    height: number,
+    existingNodes: FlowNodeLike[],
+    nodeMap: Map<string, FlowNodeLike>,
+    excludeIds: Set<string>
+): boolean {
+    const padding = 20 // Small gap between nodes
+    return existingNodes.some(node => {
+        if (excludeIds.has(node.id)) return false
+
+        const abs = getAbsoluteNodePosition(node, nodeMap)
+        const nodeWidth = getNodeDimension(node, 'width')
+        const nodeHeight = getNodeDimension(node, 'height')
+
+        // Check for overlap with padding
+        return !(
+            position.x + width + padding < abs.x ||
+            position.x > abs.x + nodeWidth + padding ||
+            position.y + height + padding < abs.y ||
+            position.y > abs.y + nodeHeight + padding
+        )
+    })
+}
+
+// Find a non-overlapping position for duplicated nodes
+function findNonOverlappingOffset(
+    originalBounds: { minX: number; minY: number; maxX: number; maxY: number; width: number; height: number },
+    existingNodes: FlowNodeLike[],
+    nodeMap: Map<string, FlowNodeLike>,
+    excludeIds: Set<string>
+): { x: number; y: number } {
+    const gap = 40 // Gap between original and duplicate
+    const nodeWidth = Math.max(originalBounds.width, 320)
+    const nodeHeight = Math.max(originalBounds.height, 180)
+
+    // Try positions in order: right, bottom, left, top, then diagonals
+    const baseOffsets = [
+        { x: nodeWidth + gap, y: 0 },        // Right
+        { x: 0, y: nodeHeight + gap },       // Bottom
+        { x: -(nodeWidth + gap), y: 0 },     // Left
+        { x: 0, y: -(nodeHeight + gap) },    // Top
+        { x: nodeWidth + gap, y: nodeHeight + gap },     // Bottom-right
+        { x: -(nodeWidth + gap), y: nodeHeight + gap },  // Bottom-left
+        { x: nodeWidth + gap, y: -(nodeHeight + gap) },  // Top-right
+        { x: -(nodeWidth + gap), y: -(nodeHeight + gap) }, // Top-left
+    ]
+
+    for (const offset of baseOffsets) {
+        const testPosition = {
+            x: originalBounds.minX + offset.x,
+            y: originalBounds.minY + offset.y,
+        }
+
+        if (!checkCollision(
+            testPosition,
+            nodeWidth,
+            nodeHeight,
+            existingNodes,
+            nodeMap,
+            excludeIds
+        )) {
+            return offset
+        }
+    }
+
+    // If all base positions are blocked, try incrementing the right offset
+    // This handles the case of many duplicates stacking up
+    for (let multiplier = 2; multiplier <= 10; multiplier++) {
+        const testOffset = { x: (nodeWidth + gap) * multiplier, y: 0 }
+        const testPosition = {
+            x: originalBounds.minX + testOffset.x,
+            y: originalBounds.minY + testOffset.y,
+        }
+
+        if (!checkCollision(
+            testPosition,
+            nodeWidth,
+            nodeHeight,
+            existingNodes,
+            nodeMap,
+            excludeIds
+        )) {
+            return testOffset
+        }
+    }
+
+    // Ultimate fallback: place far to the right
+    return { x: (nodeWidth + gap) * 11, y: 0 }
+}
+
 export function NodeContextMenu({
     children,
     nodeId,
@@ -264,6 +384,12 @@ export function NodeContextMenu({
             duplicatedNodeIds.has(e.source) && duplicatedNodeIds.has(e.target)
         )
 
+        // Calculate bounding box and find non-overlapping position
+        const nodeMap = new Map(allNodes.map(n => [n.id, n]))
+        const topLevelNodes = nodesToDuplicate.filter(n => !n.parentId || !duplicatedNodeIds.has(n.parentId))
+        const originalBounds = getNodesBoundingBox(topLevelNodes, nodeMap)
+        const offset = findNonOverlappingOffset(originalBounds, allNodes, nodeMap, duplicatedNodeIds)
+
         // Duplicate nodes with updated IDs and positions
         const duplicatedNodes: Node<Record<string, unknown>>[] = nodesToDuplicate.map((node) => {
             const newId = idMap.get(node.id) || `${node.type}-${Date.now()}`
@@ -281,14 +407,16 @@ export function NodeContextMenu({
                 }
             }
 
+            // Apply offset only to top-level nodes (not children in groups)
+            const isTopLevel = !mappedParentId
             return {
                 ...node,
                 type: node.type || 'textInput',
                 data: nodeData,
                 id: newId,
                 position: {
-                    x: node.position.x + (mappedParentId ? 0 : 40),
-                    y: node.position.y + (mappedParentId ? 0 : 40),
+                    x: node.position.x + (isTopLevel ? offset.x : 0),
+                    y: node.position.y + (isTopLevel ? offset.y : 0),
                 },
                 parentId: mappedParentId,
                 selected: !mappedParentId, // Only select top-level duplicated nodes

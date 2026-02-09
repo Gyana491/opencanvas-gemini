@@ -1715,17 +1715,112 @@ function WorkflowEditorInner() {
       idMap.set(node.id, `${node.type}-${Date.now()}-${index}`)
     })
 
+    // Calculate bounding box of selected nodes to find non-overlapping position
+    const topLevelSelected = selectedNodes.filter(n => !n.parentId || !selectedIds.has(n.parentId))
+    const nodeMap = new Map(nodes.map(n => [n.id, n]))
+
+    // Get bounding box dimensions
+    const getNodeDim = (node: Node<WorkflowNodeData>, axis: 'width' | 'height'): number => {
+      const measured = (node as any)?.measured
+      if (axis === 'width') {
+        return Math.max(1, Math.round(
+          (typeof node?.width === 'number' ? node.width : undefined) ??
+          (typeof measured?.width === 'number' ? measured.width : undefined) ?? 320
+        ))
+      }
+      return Math.max(1, Math.round(
+        (typeof node?.height === 'number' ? node.height : undefined) ??
+        (typeof measured?.height === 'number' ? measured.height : undefined) ?? 180
+      ))
+    }
+
+    const getAbsPos = (node: Node<WorkflowNodeData>): { x: number; y: number } => {
+      let x = node.position.x
+      let y = node.position.y
+      let parentId = node.parentId
+      while (parentId) {
+        const parent = nodeMap.get(parentId)
+        if (!parent) break
+        x += parent.position.x
+        y += parent.position.y
+        parentId = parent.parentId
+      }
+      return { x, y }
+    }
+
+    // Calculate bounding box
+    const positions = topLevelSelected.map(node => {
+      const abs = getAbsPos(node)
+      return { x: abs.x, y: abs.y, width: getNodeDim(node, 'width'), height: getNodeDim(node, 'height') }
+    })
+    const minX = Math.min(...positions.map(p => p.x))
+    const minY = Math.min(...positions.map(p => p.y))
+    const maxX = Math.max(...positions.map(p => p.x + p.width))
+    const maxY = Math.max(...positions.map(p => p.y + p.height))
+    const boundsWidth = maxX - minX
+    const boundsHeight = maxY - minY
+
+    // Check collision helper with minimum dimensions
+    const nodeWidth = Math.max(boundsWidth, 320)
+    const nodeHeight = Math.max(boundsHeight, 180)
+
+    const checkCollision = (testX: number, testY: number): boolean => {
+      const padding = 20
+      return nodes.some(node => {
+        if (selectedIds.has(node.id)) return false
+        const abs = getAbsPos(node)
+        const w = getNodeDim(node, 'width')
+        const h = getNodeDim(node, 'height')
+        return !(testX + nodeWidth + padding < abs.x || testX > abs.x + w + padding ||
+          testY + nodeHeight + padding < abs.y || testY > abs.y + h + padding)
+      })
+    }
+
+    // Find non-overlapping offset (prefer right, then bottom, etc.)
+    const gap = 40
+    const baseOffsets = [
+      { x: nodeWidth + gap, y: 0 },
+      { x: 0, y: nodeHeight + gap },
+      { x: -(nodeWidth + gap), y: 0 },
+      { x: 0, y: -(nodeHeight + gap) },
+      { x: nodeWidth + gap, y: nodeHeight + gap },
+      { x: -(nodeWidth + gap), y: nodeHeight + gap },
+      { x: nodeWidth + gap, y: -(nodeHeight + gap) },
+    ]
+
+    let offset = { x: (nodeWidth + gap) * 11, y: 0 } // Ultimate fallback
+
+    // Try base positions first
+    for (const off of baseOffsets) {
+      if (!checkCollision(minX + off.x, minY + off.y)) {
+        offset = off
+        break
+      }
+    }
+
+    // If all base positions blocked, try incrementing to the right
+    if (offset.x === (nodeWidth + gap) * 11) {
+      for (let multiplier = 2; multiplier <= 10; multiplier++) {
+        const testOffset = { x: (nodeWidth + gap) * multiplier, y: 0 }
+        if (!checkCollision(minX + testOffset.x, minY + testOffset.y)) {
+          offset = testOffset
+          break
+        }
+      }
+    }
+
     const duplicatedNodes = selectedNodes.map((node) => {
       const mappedParentId = node.parentId && selectedIds.has(node.parentId)
         ? idMap.get(node.parentId)
         : node.parentId
 
+      const isTopLevel = !mappedParentId
       return {
         ...node,
         id: idMap.get(node.id) || `${node.type}-${Date.now()}`,
         position: {
-          x: node.position.x + 40,
-          y: node.position.y + 40,
+          x: node.position.x + (isTopLevel ? offset.x : 0),
+          y: node.position.y + (isTopLevel ? offset.y : 0),
         },
         parentId: mappedParentId,
         selected: true,
