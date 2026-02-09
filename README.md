@@ -1,6 +1,6 @@
 # OpenCanvas
 
-
+![1770641467970](images/README/1770641467970.png)
 
 ## What is OpenCanvas?
 
@@ -9,6 +9,10 @@ OpenCanvas is a visual workflow builder that lets you create consistent, repeata
 Instead of manually writing prompts over and over, you design your workflow once and reuse it as many times as you need - ensuring consistent, high-quality results every time.
 
 ## The Problem
+
+### The "Context Chaos"
+
+Chat interfaces are great for chatting, but terrible for complex workflows. Trying to maintain context across a multi-step chain  is mentally taxing and prone to "hallucinations" as the context window fills up with noise.
 
 ### Inconsistent AI Outputs
 
@@ -32,10 +36,8 @@ OpenCanvas solves these problems by providing:
 
 **All Gemini Models in One Place** - Access text generation, image analysis, code creation, and multimodal processing in a single platform
 
-**Bulk Processing Made Easy** - Process hundreds of items using the same workflow with just a few clicks
+**Clear Context Management** - Organize your inputs, prompts, and settings visually so AI understands exactly what you need
 
- **Clear Context Management** - Organize your inputs, prompts, and settings visually so AI understands exactly what you need
-
- **Save Time** - Reuse workflows, share them with your team, and automate repetitive AI tasks
+**Save Time** - Reuse workflows, share them with your team, and automate repetitive AI tasks
 
 Whether you're a content creator, marketer, developer, or business owner, OpenCanvas makes working with AI simpler, faster, and more reliable.
